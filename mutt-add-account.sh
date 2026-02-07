@@ -5,24 +5,75 @@ set -e
 echo "=== Mutt Account Setup Script ==="
 echo
 
-# Get user inputs
-read -p "Enter your full email address (e.g., user@disroot.org): " email
-read -p "Enter your full name: " fullname
-read -sp "Enter your email password: " password
-echo
-read -p "Enter account short name (e.g., psy32nd): " shortname
-read -p "Enter IMAP server (e.g., disroot.org): " imap_server
-read -p "Enter SMTP server (default: same as IMAP): " smtp_server
-smtp_server=${smtp_server:-$imap_server}
-
-# Extract username from email (part before @)
-username="${email%%@*}"
-
-# Determine next available function key
+# Check if .muttrc exists, if not create it with default settings
 mutt_config="$HOME/.muttrc"
 if [ ! -f "$mutt_config" ]; then
-    echo "Error: ~/.muttrc not found!"
-    exit 1
+    echo "Creating new .muttrc with default settings..."
+    cat > "$mutt_config" << 'MUTTRC_EOF'
+## General options
+set header_cache = "~/.cache/mutt"
+set imap_check_subscribed
+set imap_keepalive = 300
+unset imap_passive
+set mail_check = 15
+set timeout = 10
+set mbox_type=Maildir
+set use_envelope_from = yes
+set sort=reverse-date
+set ssl_verify_host = no
+MUTTRC_EOF
+    echo "Created ~/.muttrc"
+else
+    # Check and update/add required options
+    required_options=(
+        "set header_cache = \"~/.cache/mutt\""
+        "set imap_check_subscribed"
+        "set imap_keepalive = 300"
+        "unset imap_passive"
+        "set mail_check = 15"
+        "set timeout = 10"
+        "set mbox_type=Maildir"
+        "set use_envelope_from = yes"
+        "set sort=reverse-date"
+        "set ssl_verify_host = no"
+    )
+    
+    for option in "${required_options[@]}"; do
+        option_name=$(echo "$option" | awk '{print $1, $2}')
+        if grep -q "^${option_name}" "$mutt_config"; then
+            # Option exists, update it
+            sed -i "s|^${option_name}.*|${option}|" "$mutt_config"
+        else
+            # Option doesn't exist, add it at the top
+            sed -i "1i${option}" "$mutt_config"
+        fi
+    done
+fi
+
+# Get user inputs
+read -p "Enter your full email address: " email
+read -p "Enter your full name: " fullname
+read -sp "Enter password: " password
+echo
+read -p "Enter account short name: " shortname
+read -p "Enter IMAP server: " imap_server
+read -p "Enter SMTP server (Press Enter if same as IMAP server): " smtp_server
+smtp_server=${smtp_server:-$imap_server}
+read -p "Enter SMTP port (465 for SSL/TLS, 587 for STARTTLS) [465]: " smtp_port
+smtp_port=${smtp_port:-465}
+
+# Extract username from email
+username="${email%%@*}"
+
+# Determine SMTP protocol and TLS settings
+if [ "$smtp_port" = "587" ]; then
+    smtp_proto="smtp"
+    smtp_starttls="set ssl_starttls = yes"
+    use_starttls=true
+else
+    smtp_proto="smtps"
+    smtp_starttls="unset ssl_starttls"
+    use_starttls=false
 fi
 
 # Find next available F-key
@@ -31,9 +82,8 @@ while grep -q "<f$next_fkey>" "$mutt_config"; do
     ((next_fkey++))
 done
 
-# Find next account number by counting existing ACCOUNT sections
+# Find next account number
 if grep -q "^## ACCOUNT" "$mutt_config"; then
-    # Get the highest account number
     max_account=$(grep "^## ACCOUNT" "$mutt_config" | sed 's/## ACCOUNT//' | sort -n | tail -1)
     account_num=$((max_account + 1))
 else
@@ -42,10 +92,11 @@ fi
 
 echo
 echo "Using F$next_fkey for this account (ACCOUNT$account_num)"
+echo "SMTP: $smtp_proto on port $smtp_port"
 echo
 
-# Create account directory
-account_dir="$HOME/.mutt/${shortname}-${imap_server##*.}"
+# Create account directory (without TLD)
+account_dir="$HOME/.mutt/${shortname}"
 mkdir -p "$account_dir"
 
 # Create password files
@@ -55,48 +106,79 @@ smtp_pass_file="$account_dir/smtp-pass"
 printf '%s' "$password" > "$pass_file"
 chmod 600 "$pass_file"
 
-# URL encode password for SMTP - proper encoding
-encoded_pass=""
-for ((i=0; i<${#password}; i++)); do
-    c="${password:$i:1}"
-    case "$c" in
-        [a-zA-Z0-9.~_-]) 
-            encoded_pass+="$c"
-            ;;
-        *)
-            printf -v hex '%02X' "'$c"
-            encoded_pass+="%$hex"
-            ;;
-    esac
-done
-
-printf '%s' "$encoded_pass" > "$smtp_pass_file"
-chmod 600 "$smtp_pass_file"
-
 # Create config file
 config_file="$account_dir/config"
 
-cat > "$config_file" << EOF
+if [ "$use_starttls" = true ]; then
+    # STARTTLS - hardcode password with proper escaping
+    # Escape for single quotes: replace ' with '\''
+    escaped_imap_pass="${password//\'/\'\\\'\'}"
+    escaped_smtp_pass="${password//\'/\'\\\'\'}"
+    
+    cat > "$config_file" << EOF
 ## Receive options.
 set imap_user=$email
-set imap_pass=\`cat $pass_file | tr -d '\n'\`
-set folder = imaps://$email/
+set imap_pass='$escaped_imap_pass'
+set folder = imaps://$username@$imap_server/
 set spoolfile = +INBOX
 set postponed = +Drafts
 set record = +Sent
 set status_format = "\$imap_user %f"
 ## Send options.
-set smtp_url=smtps://$email:\`cat $smtp_pass_file | tr -d '\n'\`@$smtp_server:465
+set smtp_url=$smtp_proto://$username@$smtp_server:$smtp_port
+set smtp_pass='$escaped_smtp_pass'
+set smtp_authenticators="plain:login"
+set from="$email"
+set use_from=yes
 set realname='$fullname'
-set from=$email
 set hostname="$smtp_server"
 set signature="$fullname"
 # Connection options
 set ssl_force_tls = yes
-unset ssl_starttls
-## Hook -- IMPORTANT!
-account-hook "imaps://$email/" 'set imap_user="$email"; set imap_pass=\`cat $pass_file | tr -d '"'"'\n'"'"'\`'
+$smtp_starttls
 EOF
+else
+    # SSL/TLS - use file-based password with URL encoding for SMTP
+    # URL encode password for SMTP
+    encoded_pass=""
+    for ((i=0; i<${#password}; i++)); do
+        c="${password:$i:1}"
+        case "$c" in
+            [a-zA-Z0-9.~_-]) 
+                encoded_pass+="$c"
+                ;;
+            *)
+                printf -v hex '%02X' "'$c"
+                encoded_pass+="%$hex"
+                ;;
+        esac
+    done
+    
+    printf '%s' "$encoded_pass" > "$smtp_pass_file"
+    chmod 600 "$smtp_pass_file"
+    
+    cat > "$config_file" << EOF
+## Receive options.
+set imap_user=$email
+set imap_pass=\`cat $pass_file | tr -d '\n'\`
+set folder = imaps://$username@$imap_server/
+set spoolfile = +INBOX
+set postponed = +Drafts
+set record = +Sent
+set status_format = "\$imap_user %f"
+## Send options.
+set smtp_url=$smtp_proto://$email:\`cat $smtp_pass_file | tr -d '\n'\`@$smtp_server:$smtp_port
+set smtp_authenticators="plain:login"
+set from="$email"
+set use_from=yes
+set realname='$fullname'
+set hostname="$smtp_server"
+set signature="$fullname"
+# Connection options
+set ssl_force_tls = yes
+$smtp_starttls
+EOF
+fi
 
 echo "Created config file: $config_file"
 echo "Created password files in: $account_dir"
@@ -105,25 +187,23 @@ echo "Created password files in: $account_dir"
 cp "$mutt_config" "${mutt_config}.backup.$(date +%Y%m%d_%H%M%S)"
 echo "Backed up .muttrc"
 
-# Find the line to insert after (before first existing account or at end)
+# Find insertion point
 if grep -q "^## ACCOUNT" "$mutt_config"; then
-    # Insert before first account section
     line_num=$(grep -n "^## ACCOUNT" "$mutt_config" | head -1 | cut -d: -f1)
     ((line_num--))
 else
-    # Append to end
     line_num=$(wc -l < "$mutt_config")
 fi
 
-# Create temp file with new content
+# Add account to .muttrc
 {
     head -n "$line_num" "$mutt_config"
     echo "# Switch to account ${account_num} (${shortname})"
-    echo "macro index,pager <f$next_fkey> '<sync-mailbox><enter-command>source $config_file<enter><change-folder>imaps://$email/INBOX<enter>'"
+    echo "macro index,pager <f$next_fkey> '<sync-mailbox><enter-command>source $config_file<enter><change-folder>imaps://$username@$imap_server/INBOX<enter>'"
     echo ""
     echo "## ACCOUNT${account_num}"
     echo "source \"$config_file\""
-    echo "folder-hook \"imaps://$email/\" 'source $config_file;'"
+    echo "folder-hook \"imaps://$username@$imap_server/\" 'source $config_file;'"
     echo
     tail -n +$((line_num + 1)) "$mutt_config"
 } > "${mutt_config}.tmp"
