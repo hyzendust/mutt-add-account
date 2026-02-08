@@ -76,6 +76,8 @@ echo "Searching for server settings..."
 # Try to get MX record and extract mail server
 mx_record=$(dig +short MX "$email_domain" 2>/dev/null | sort -n | head -1 | awk '{print $2}' | sed 's/\.$//')
 
+detection_failed=false
+
 if [ -n "$mx_record" ]; then
     # Got MX record, try common IMAP server patterns
     base_domain=$(echo "$mx_record" | sed 's/^smtp\.//' | sed 's/^mx[0-9]*\.//' | sed 's/^mail\.//')
@@ -98,36 +100,51 @@ if [ -n "$mx_record" ]; then
         detected_smtp="$detected_imap"
     fi
 else
-    # Fallback if MX lookup fails
-    detected_imap="mail.${email_domain}"
-    detected_smtp="mail.${email_domain}"
+    # MX lookup failed - check if domain itself exists
+    if host "$email_domain" &>/dev/null; then
+        detected_imap="mail.${email_domain}"
+        detected_smtp="mail.${email_domain}"
+    else
+        detection_failed=true
+    fi
 fi
 
-# Detect port by testing common ports
-detected_port="465"
-if timeout 2 bash -c "echo -n '' > /dev/tcp/$detected_smtp/587" 2>/dev/null; then
-    detected_port="587"
-elif timeout 2 bash -c "echo -n '' > /dev/tcp/$detected_smtp/465" 2>/dev/null; then
+if [ "$detection_failed" = false ]; then
+    # Detect port by testing common ports
     detected_port="465"
-fi
+    if timeout 2 bash -c "echo -n '' > /dev/tcp/$detected_smtp/587" 2>/dev/null; then
+        detected_port="587"
+    elif timeout 2 bash -c "echo -n '' > /dev/tcp/$detected_smtp/465" 2>/dev/null; then
+        detected_port="465"
+    fi
 
-# Show detected settings
-echo ""
-echo "Detected settings:"
-echo "  IMAP server: $detected_imap"
-echo "  SMTP server: $detected_smtp"
-echo "  SMTP port:   $detected_port"
-echo ""
+    # Show detected settings
+    echo ""
+    echo "Detected settings:"
+    echo "  IMAP server: $detected_imap"
+    echo "  SMTP server: $detected_smtp"
+    echo "  SMTP port:   $detected_port"
+    echo ""
 
-read -p "Are these settings correct? (y/n): " confirm
+    read -p "Are these settings correct? (y/n): " confirm
 
-if [[ "$confirm" =~ ^[Yy]$ ]]; then
-    # Use detected settings
-    imap_server="$detected_imap"
-    smtp_server="$detected_smtp"
-    smtp_port="$detected_port"
+    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+        # Use detected settings
+        imap_server="$detected_imap"
+        smtp_server="$detected_smtp"
+        smtp_port="$detected_port"
+    else
+        # Manual entry
+        echo "Please enter settings manually:"
+        read -p "Enter IMAP server: " imap_server
+        read -p "Enter SMTP server: " smtp_server
+        read -p "Enter SMTP port (465 for SSL/TLS, 587 for STARTTLS) [465]: " smtp_port
+        smtp_port=${smtp_port:-465}
+    fi
 else
-    # Manual entry
+    # Detection completely failed
+    echo ""
+    echo "Could not auto-detect mail server settings for $email_domain"
     echo "Please enter settings manually:"
     read -p "Enter IMAP server: " imap_server
     read -p "Enter SMTP server: " smtp_server
