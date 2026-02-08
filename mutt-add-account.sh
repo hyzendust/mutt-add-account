@@ -55,7 +55,7 @@ read -p "Enter your full email address: " email
 read -p "Enter your full name: " fullname
 read -sp "Enter password: " password
 echo
-read -p "Enter account short name: " shortname
+read -p "Enter account name: " shortname
 read -p "Enter IMAP server: " imap_server
 read -p "Enter SMTP server (Press Enter if same as IMAP server): " smtp_server
 smtp_server=${smtp_server:-$imap_server}
