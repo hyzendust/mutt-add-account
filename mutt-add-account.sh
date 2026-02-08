@@ -99,26 +99,42 @@ echo
 account_dir="$HOME/.mutt/${shortname}"
 mkdir -p "$account_dir"
 
-# Create password files
+# Create password file for reference
 pass_file="$account_dir/pass"
-smtp_pass_file="$account_dir/smtp-pass"
-
 printf '%s' "$password" > "$pass_file"
 chmod 600 "$pass_file"
+
+# Escape password for use in double quotes (for IMAP)
+# Escape backslashes first, then double quotes, then dollar signs, then backticks
+escaped_pass="${password//\\/\\\\}"
+escaped_pass="${escaped_pass//\"/\\\"}"
+escaped_pass="${escaped_pass//\$/\\\$}"
+escaped_pass="${escaped_pass//\`/\\\`}"
+
+# URL encode password for SMTP
+encoded_pass=""
+for ((i=0; i<${#password}; i++)); do
+    c="${password:$i:1}"
+    case "$c" in
+        [a-zA-Z0-9.~_-]) 
+            encoded_pass+="$c"
+            ;;
+        *)
+            printf -v hex '%02X' "'$c"
+            encoded_pass+="%$hex"
+            ;;
+    esac
+done
 
 # Create config file
 config_file="$account_dir/config"
 
 if [ "$use_starttls" = true ]; then
-    # STARTTLS - hardcode password with proper escaping
-    # Escape for single quotes: replace ' with '\''
-    escaped_imap_pass="${password//\'/\'\\\'\'}"
-    escaped_smtp_pass="${password//\'/\'\\\'\'}"
-    
+    # STARTTLS - hardcode both passwords
     cat > "$config_file" << EOF
 ## Receive options.
 set imap_user=$email
-set imap_pass='$escaped_imap_pass'
+set imap_pass="$escaped_pass"
 set folder = imaps://$username@$imap_server/
 set spoolfile = +INBOX
 set postponed = +Drafts
@@ -126,7 +142,7 @@ set record = +Sent
 set status_format = "\$imap_user %f"
 ## Send options.
 set smtp_url=$smtp_proto://$username@$smtp_server:$smtp_port
-set smtp_pass='$escaped_smtp_pass'
+set smtp_pass="$escaped_pass"
 set smtp_authenticators="plain:login"
 set from="$email"
 set use_from=yes
@@ -138,36 +154,18 @@ set ssl_force_tls = yes
 $smtp_starttls
 EOF
 else
-    # SSL/TLS - use file-based password with URL encoding for SMTP
-    # URL encode password for SMTP
-    encoded_pass=""
-    for ((i=0; i<${#password}; i++)); do
-        c="${password:$i:1}"
-        case "$c" in
-            [a-zA-Z0-9.~_-]) 
-                encoded_pass+="$c"
-                ;;
-            *)
-                printf -v hex '%02X' "'$c"
-                encoded_pass+="%$hex"
-                ;;
-        esac
-    done
-    
-    printf '%s' "$encoded_pass" > "$smtp_pass_file"
-    chmod 600 "$smtp_pass_file"
-    
+    # SSL/TLS - hardcode IMAP password, embed URL-encoded password in smtp_url
     cat > "$config_file" << EOF
 ## Receive options.
 set imap_user=$email
-set imap_pass=\`cat $pass_file | tr -d '\n'\`
+set imap_pass="$escaped_pass"
 set folder = imaps://$username@$imap_server/
 set spoolfile = +INBOX
 set postponed = +Drafts
 set record = +Sent
 set status_format = "\$imap_user %f"
 ## Send options.
-set smtp_url=$smtp_proto://$email:\`cat $smtp_pass_file | tr -d '\n'\`@$smtp_server:$smtp_port
+set smtp_url=$smtp_proto://$email:$encoded_pass@$smtp_server:$smtp_port
 set smtp_authenticators="plain:login"
 set from="$email"
 set use_from=yes
@@ -181,7 +179,7 @@ EOF
 fi
 
 echo "Created config file: $config_file"
-echo "Created password files in: $account_dir"
+echo "Created password file in: $account_dir"
 
 # Backup .muttrc
 cp "$mutt_config" "${mutt_config}.backup.$(date +%Y%m%d_%H%M%S)"
