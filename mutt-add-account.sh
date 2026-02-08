@@ -130,13 +130,13 @@ if [ "$use_starttls" = true ]; then
 ## Receive options.
 set imap_user=$email
 set imap_pass="$escaped_pass"
-set folder = imaps://$username@$imap_server/
+set folder = imaps://$email@$imap_server/
 set spoolfile = +INBOX
 set postponed = +Drafts
 set record = +Sent
 set status_format = "\$imap_user %f"
 ## Send options.
-set smtp_url=$smtp_proto://$username@$smtp_server:$smtp_port
+set smtp_url=$smtp_proto://$email@$smtp_server:$smtp_port
 set smtp_pass="$escaped_pass"
 set smtp_authenticators="plain:login"
 set from="$email"
@@ -154,7 +154,7 @@ else
 ## Receive options.
 set imap_user=$email
 set imap_pass="$escaped_pass"
-set folder = imaps://$username@$imap_server/
+set folder = imaps://$email@$imap_server/
 set spoolfile = +INBOX
 set postponed = +Drafts
 set record = +Sent
@@ -191,11 +191,11 @@ fi
 {
     head -n "$line_num" "$mutt_config"
     echo "# Switch to account ${account_num} (${shortname})"
-    echo "macro index,pager <f$next_fkey> '<sync-mailbox><enter-command>source $config_file<enter><change-folder>imaps://$username@$imap_server/INBOX<enter>'"
+    echo "macro index,pager <f$next_fkey> '<sync-mailbox><enter-command>source $config_file<enter><change-folder>imaps://$email@$imap_server/INBOX<enter>'"
     echo ""
     echo "## ACCOUNT${account_num}"
     echo "source \"$config_file\""
-    echo "folder-hook \"imaps://$username@$imap_server/\" 'source $config_file;'"
+    echo "folder-hook \"imaps://$email@$imap_server/\" 'source $config_file;'"
     echo
     tail -n +$((line_num + 1)) "$mutt_config"
 } > "${mutt_config}.tmp"
