@@ -95,14 +95,11 @@ echo "Using F$next_fkey for this account (ACCOUNT$account_num)"
 echo "SMTP: $smtp_proto on port $smtp_port"
 echo
 
-# Create account directory (without TLD)
-account_dir="$HOME/.mutt/${shortname}"
-mkdir -p "$account_dir"
+# Create .mutt directory if it doesn't exist
+mkdir -p "$HOME/.mutt"
 
-# Create password file for reference
-pass_file="$account_dir/pass"
-printf '%s' "$password" > "$pass_file"
-chmod 600 "$pass_file"
+# Config file will be named after the account name
+config_file="$HOME/.mutt/${shortname}"
 
 # Escape password for use in double quotes (for IMAP)
 # Escape backslashes first, then double quotes, then dollar signs, then backticks
@@ -127,8 +124,6 @@ for ((i=0; i<${#password}; i++)); do
 done
 
 # Create config file
-config_file="$account_dir/config"
-
 if [ "$use_starttls" = true ]; then
     # STARTTLS - hardcode both passwords
     cat > "$config_file" << EOF
@@ -179,7 +174,6 @@ EOF
 fi
 
 echo "Created config file: $config_file"
-echo "Created password file in: $account_dir"
 
 # Backup .muttrc
 cp "$mutt_config" "${mutt_config}.backup.$(date +%Y%m%d_%H%M%S)"
