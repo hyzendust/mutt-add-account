@@ -21,6 +21,10 @@ set mbox_type=Maildir
 set use_envelope_from = yes
 set sort=reverse-date
 set ssl_verify_host = no
+
+auto_view text/html                                   # view HTML automatically
+alternative_order text/plain text/enriched text/html  # save HTML for last
+
 MUTTRC_EOF
     echo "Created ~/.muttrc"
 else
@@ -36,9 +40,17 @@ else
         "set use_envelope_from = yes"
         "set sort=reverse-date"
         "set ssl_verify_host = no"
+        ""
+        "auto_view text/html                                   # view HTML automatically"
+        "alternative_order text/plain text/enriched text/html  # save HTML for last"
+        ""
     )
     
     for option in "${required_options[@]}"; do
+        # Skip empty lines
+        if [ -z "$option" ]; then
+            continue
+        fi
         option_name=$(echo "$option" | awk '{print $1, $2}')
         if grep -q "^${option_name}" "$mutt_config"; then
             # Option exists, update it
