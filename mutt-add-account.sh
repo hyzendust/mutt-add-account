@@ -68,11 +68,72 @@ read -p "Enter your full name: " fullname
 read -sp "Enter password: " password
 echo
 read -p "Enter account name: " shortname
-read -p "Enter IMAP server: " imap_server
-read -p "Enter SMTP server (Press Enter if same as IMAP server): " smtp_server
-smtp_server=${smtp_server:-$imap_server}
-read -p "Enter SMTP port (465 for SSL/TLS, 587 for STARTTLS) [465]: " smtp_port
-smtp_port=${smtp_port:-465}
+
+# Auto-detect mail server settings
+email_domain="${email#*@}"
+echo "Searching for server settings..."
+
+# Try to get MX record and extract mail server
+mx_record=$(dig +short MX "$email_domain" 2>/dev/null | sort -n | head -1 | awk '{print $2}' | sed 's/\.$//')
+
+if [ -n "$mx_record" ]; then
+    # Got MX record, try common IMAP server patterns
+    base_domain=$(echo "$mx_record" | sed 's/^smtp\.//' | sed 's/^mx[0-9]*\.//' | sed 's/^mail\.//')
+    
+    # Try common IMAP server patterns
+    if host "imap.$base_domain" &>/dev/null; then
+        detected_imap="imap.$base_domain"
+    elif host "mail.$base_domain" &>/dev/null; then
+        detected_imap="mail.$base_domain"
+    elif host "$mx_record" &>/dev/null; then
+        detected_imap="$mx_record"
+    else
+        detected_imap="mail.${email_domain}"
+    fi
+    
+    # Try to detect SMTP server
+    if host "smtp.$base_domain" &>/dev/null; then
+        detected_smtp="smtp.$base_domain"
+    else
+        detected_smtp="$detected_imap"
+    fi
+else
+    # Fallback if MX lookup fails
+    detected_imap="mail.${email_domain}"
+    detected_smtp="mail.${email_domain}"
+fi
+
+# Detect port by testing common ports
+detected_port="465"
+if timeout 2 bash -c "echo -n '' > /dev/tcp/$detected_smtp/587" 2>/dev/null; then
+    detected_port="587"
+elif timeout 2 bash -c "echo -n '' > /dev/tcp/$detected_smtp/465" 2>/dev/null; then
+    detected_port="465"
+fi
+
+# Show detected settings
+echo ""
+echo "Detected settings:"
+echo "  IMAP server: $detected_imap"
+echo "  SMTP server: $detected_smtp"
+echo "  SMTP port:   $detected_port"
+echo ""
+
+read -p "Are these settings correct? (y/n): " confirm
+
+if [[ "$confirm" =~ ^[Yy]$ ]]; then
+    # Use detected settings
+    imap_server="$detected_imap"
+    smtp_server="$detected_smtp"
+    smtp_port="$detected_port"
+else
+    # Manual entry
+    echo "Please enter settings manually:"
+    read -p "Enter IMAP server: " imap_server
+    read -p "Enter SMTP server: " smtp_server
+    read -p "Enter SMTP port (465 for SSL/TLS, 587 for STARTTLS) [465]: " smtp_port
+    smtp_port=${smtp_port:-465}
+fi
 
 # Extract username from email
 username="${email%%@*}"
