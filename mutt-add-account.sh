@@ -21,9 +21,13 @@ set mbox_type=Maildir
 set use_envelope_from = yes
 set sort=reverse-date
 set ssl_verify_host = no
+set resolve = no
 
 auto_view text/html                                   # view HTML automatically
 alternative_order text/plain text/enriched text/html  # save HTML for last
+
+source ~/.mutt/vim-keys.rc
+source ~/.mutt/vombatidae.neomuttrc
 
 MUTTRC_EOF
     echo "Created ~/.muttrc"
@@ -40,9 +44,13 @@ else
         "set use_envelope_from = yes"
         "set sort=reverse-date"
         "set ssl_verify_host = no"
+        "set resolve = no"
         ""
         "auto_view text/html                                   # view HTML automatically"
         "alternative_order text/plain text/enriched text/html  # save HTML for last"
+        ""
+        "source ~/.mutt/vim-keys.rc"
+        "source ~/.mutt/vombatidae.neomuttrc"
         ""
     )
     
@@ -60,6 +68,149 @@ else
             sed -i "1i${option}" "$mutt_config"
         fi
     done
+fi
+
+# Create .mutt directory and subdirectories if they don't exist
+mkdir -p "$HOME/.mutt/accounts"
+
+# Create vim-keys.rc if it doesn't exist
+vim_keys_file="$HOME/.mutt/vim-keys.rc"
+if [ ! -f "$vim_keys_file" ]; then
+    cat > "$vim_keys_file" << 'VIMKEYS_EOF'
+#------------------------------------------------------------
+# Vi Key Bindings
+#------------------------------------------------------------
+# Moving around
+bind attach,browser,index       g   noop
+bind attach,browser,index       gg  first-entry
+bind attach,browser,index       G   last-entry
+bind pager                      g  noop
+bind pager                      gg  top
+bind pager                      G   bottom
+bind pager                      k   previous-line
+bind pager                      j   next-line
+# Scrolling
+bind attach,browser,pager,index \CF next-page
+bind attach,browser,pager,index \CB previous-page
+bind attach,browser,pager,index \Cu half-up
+bind attach,browser,pager,index \Cd half-down
+bind browser,pager              \Ce next-line
+bind browser,pager              \Cy previous-line
+bind index                      \Ce next-line
+bind index                      \Cy previous-line
+bind pager,index                d   noop
+bind pager,index                dd  delete-message
+# Mail & Reply
+bind index                      \Cm list-reply # Doesn't work currently
+# Threads
+bind browser,pager,index        N   search-opposite
+bind pager,index                dT  delete-thread
+bind pager,index                dt  delete-subthread
+bind pager,index                gt  next-thread
+bind pager,index                gT  previous-thread
+bind index                      za  collapse-thread
+bind index                      zA  collapse-all # Missing :folddisable/foldenable
+# Open mail
+bind index <return> display-message
+# Full headers
+macro index h "<enter-command>unset weed<enter><display-message><enter-command>set weed<enter>" "show all headers"
+macro pager h "<exit><enter-command>unset weed<enter><display-message><enter-command>set weed<enter>" "show all headers"
+# Unmark all marked for deleted and tagged messages
+bind index u noop
+bind pager u noop
+macro index u "<untag-pattern>~A<enter><tag-pattern>~A<enter><tag-prefix><undelete-message><untag-pattern>~A<enter>" "undelete all and untag"
+macro pager u "<exit><untag-pattern>~A<enter><tag-pattern>~A<enter><tag-prefix><undelete-message><untag-pattern>~A<enter>" "undelete all and untag"
+VIMKEYS_EOF
+    echo "Created ~/.mutt/vim-keys.rc"
+fi
+
+# Create vombatidae.neomuttrc if it doesn't exist
+vombat_file="$HOME/.mutt/vombatidae.neomuttrc"
+if [ ! -f "$vombat_file" ]; then
+    cat > "$vombat_file" << 'VOMBAT_EOF'
+# NeoMutt color file
+# Maintainer: Jon Häggblad <jon@haeggblad.com>
+# URL: http://www.haeggblad.com
+# Last Change: 2013 May 17
+# Version: 0.1
+#
+# NeoMutt colorscheme loosely inspired by vim colorscheme wombat.vim.
+#
+# Changelog:
+#   0.1 - Initial version
+# --- vombatidae text colors ---
+#  color normal         color230      color234
+#  color message        color230      color234
+# --- slightly less yellow text colors ---
+color normal            color253        color234 # mod
+# color normal          color253        color233 # mod
+#  color normal         color253        default # mod
+color indicator         color230        color238
+color status            color101        color16
+#  color tree           color113        color234
+#  color tree           color173        color234
+color tree              color208        color234
+color signature         color102        color234
+color message           color253        color234
+color attachment        color117        color234
+color error             color30         color234
+color tilde             color130        color235
+color search       color100     default
+color markers      color138     default
+#  mono bold          reverse
+#  color bold         color173 color191
+#  mono underline     reverse
+#  color underline    color48  color191
+color quoted        color107     color234             # quoted text
+color quoted1       color66      color234
+color quoted2       color32      color234
+color quoted3       color30      color234
+color quoted4       color99      color234
+color quoted5       color36      color234
+color quoted6       color114     color234
+color quoted7       color109     color234
+color quoted8       color41      color234
+color quoted9       color138     color234
+# color body          cyan  default  "((ftp|http|https)://|news:)[^ >)\"\t]+"
+# color body          cyan  default  "[-a-z_0-9.+]+@[-a-z_0-9.]+"
+# color body          red   default  "(^| )\\*[-a-z0-9*]+\\*[,.?]?[ \n]"
+# color body          green default  "(^| )_[-a-z0-9_]+_[,.?]?[\n]"
+# color body          red   default  "(^| )\\*[-a-z0-9*]+\\*[,.?]?[ \n]"
+# color body          green default  "(^| )_[-a-z0-9_]+_[,.?]?[ \n]"
+color index             color202        color234  ~F         # Flagged
+color index             color39         color234  ~N          # New
+color index             color39         color234  ~O
+color index             color229        color22  ~T         # Tagged
+color index             color240        color234  ~D         # Deleted
+# ---
+#mono body      reverse         '^(subject):.*'
+#color body     brightwhite magenta     '^(subject):.*'
+#mono body      reverse         '[[:alpha:]][[:alnum:]-]+:'
+#color body     black cyan      '[[:alpha:]][[:alnum:]-]+:'
+# --- header ---
+color hdrdefault        color30         color233
+color header            color132        color233    '^date:'
+color header            color153        color233    '^(to|cc|bcc):'
+color header            color120        color233    '^from:'
+color header            color178        color233    '^subject:'
+color header            color31         color233    '^user-agent:'
+color header            color29         color233    '^reply-to:'
+#color header   magenta default '^(status|lines|date|received|sender|references):'
+#color header   magenta default '^(pr|mime|x-|user|return|content-)[^:]*:'
+#color header   brightyellow default '^content-type:'
+#color header   magenta default '^content-type: *text/plain'
+# color header  brightgreen default '^list-[^:]*:'
+#mono  header    bold               '^(subject):.*$'
+#color header   brightcyan default      '^(disposition)'
+#color header   green default   '^(mail-)?followup'
+#color header   white default   '^reply'
+#color header   brightwhite default     '^(resent)'
+# color header  brightwhite default     '^from:'
+#mono index     bold '~h "^content-type: *(multipart/(mixed|signed|encrypted)|application/)"'
+#color index    green black '~h "^content-type: *multipart/(signed|encrypted)"'
+#color sidebar_new color39 color234
+VOMBAT_EOF
+    echo "Created ~/.mutt/vombatidae.neomuttrc"
 fi
 
 # Get user inputs
@@ -185,11 +336,8 @@ echo "Using F$next_fkey for this account (ACCOUNT$account_num)"
 echo "SMTP: $smtp_proto on port $smtp_port"
 echo
 
-# Create .mutt directory if it doesn't exist
-mkdir -p "$HOME/.mutt"
-
-# Config file will be named after the account name
-config_file="$HOME/.mutt/${shortname}"
+# Config file will be in the accounts subdirectory
+config_file="$HOME/.mutt/accounts/${shortname}"
 
 # Escape password for use in double quotes (for IMAP)
 # Escape backslashes first, then double quotes, then dollar signs, then backticks
