@@ -492,6 +492,12 @@ for ((i=0; i<${#password}; i++)); do
     esac
 done
 
+# Detect if this is a Gmail account
+is_gmail=false
+if [[ "$email_domain" == "gmail.com" || "$email_domain" == "googlemail.com" ]]; then
+    is_gmail=true
+fi
+
 # Create mutt config file with Maildir
 cat > "$config_file" << EOF
 ## Receive options.
@@ -499,8 +505,25 @@ set imap_user=$email
 set imap_pass="$escaped_pass"
 set folder = ~/Maildir/${shortname}/
 set spoolfile = +INBOX
+EOF
+
+# Add Gmail-specific or standard folder settings
+if [ "$is_gmail" = true ]; then
+    cat >> "$config_file" << EOF
+set postponed = "+[Gmail]/Drafts"
+set record = "+[Gmail]/Sent Mail"
+set trash = "+[Gmail]/Trash"
+EOF
+else
+    cat >> "$config_file" << EOF
 set postponed = +Drafts
 set record = +Sent
+set trash = +Trash
+EOF
+fi
+
+# Continue with common settings
+cat >> "$config_file" << EOF
 set status_format = "\$imap_user %f"
 ## Send options.
 set smtp_url=$smtp_proto://$email@$smtp_server:$smtp_port
@@ -515,6 +538,24 @@ set signature="$fullname"
 set ssl_force_tls = yes
 $smtp_starttls
 
+EOF
+
+# Add mailboxes based on account type
+if [ "$is_gmail" = true ]; then
+    cat >> "$config_file" << 'EOF'
+# Mailboxes for sidebar
+unmailboxes *
+named-mailboxes "INBOX" "=INBOX"
+named-mailboxes "Drafts" "=[Gmail]/Drafts"
+named-mailboxes "Sent" "=[Gmail]/Sent Mail"
+named-mailboxes "Important" "=[Gmail]/Important"
+named-mailboxes "Starred" "=[Gmail]/Starred"
+named-mailboxes "Spam" "=[Gmail]/Spam"
+named-mailboxes "Trash" "=[Gmail]/Trash"
+named-mailboxes "All Mail" "=[Gmail]/All Mail"
+EOF
+else
+    cat >> "$config_file" << 'EOF'
 # Mailboxes for sidebar
 unmailboxes *
 named-mailboxes "INBOX" "=INBOX"
@@ -522,8 +563,8 @@ named-mailboxes "Drafts" "=Drafts"
 named-mailboxes "Sent" "=Sent"
 named-mailboxes "Junk" "=Junk"
 named-mailboxes "Trash" "=Trash"
-named-mailboxes "All" "=All"
 EOF
+fi
 
 echo "Created config file: $config_file"
 
