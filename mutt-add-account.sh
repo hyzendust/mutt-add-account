@@ -30,6 +30,9 @@ source ~/.mutt/sidebar.muttrc
 source ~/.mutt/vim-keys.rc
 source ~/.mutt/vombatidae.neomuttrc
 
+# Clear any default mailboxes before loading account configs
+unmailboxes *
+
 MUTTRC_EOF
     echo "Created ~/.muttrc"
 else
@@ -53,6 +56,9 @@ else
         "source ~/.mutt/sidebar.muttrc"
         "source ~/.mutt/vim-keys.rc"
         "source ~/.mutt/vombatidae.neomuttrc"
+        ""
+        "# Clear any default mailboxes before loading account configs"
+        "unmailboxes *"
         ""
     )
     
@@ -93,6 +99,8 @@ bind index,pager \Cp sidebar-prev-new
 bind index,pager \Cn sidebar-next-new
 bind index,pager B sidebar-toggle-visible
 
+# Use named-mailboxes to show mailboxes in sidebar
+# These will be populated dynamically by each account config
 SIDEBAR_EOF
     echo "Created ~/.mutt/sidebar.muttrc"
 fi
@@ -237,6 +245,52 @@ VOMBAT_EOF
     echo "Created ~/.mutt/vombatidae.neomuttrc"
 fi
 
+# Create/update mbsync apparmor profile
+apparmor_file="/etc/apparmor.d/mbsync"
+if [ ! -f "$apparmor_file" ] && [ -d "/etc/apparmor.d" ]; then
+    echo "Creating mbsync apparmor profile..."
+    sudo tee "$apparmor_file" > /dev/null << 'APPARMOR_EOF'
+#------------------------------------------------------------------
+#    Copyright (C) 2024 Canonical Ltd.
+#
+#    Author: Eduardo Barretto <eduardo.barretto@canonical.com>
+#
+#    This program is free software; you can redistribute it and/or
+#    modify it under the terms of version 2 of the GNU General Public
+#    License published by the Free Software Foundation.
+#------------------------------------------------------------------
+# vim: ft=apparmor
+abi <abi/4.0>,
+include <tunables/global>
+profile mbsync /usr/bin/mbsync {
+  include <abstractions/base>
+  include <abstractions/nameservice-strict>
+  include <abstractions/ssl_certs>
+  network inet dgram,
+  network inet stream,
+  network inet6 dgram,
+  network inet6 stream,
+  network netlink raw,
+  @{etc_ro}/ssl/openssl.cnf rw,
+  /usr/bin/mbsync rw,
+  owner @{HOME}/.mbsyncrc rw,
+  owner @{HOME}/Maildir/**/ rw,
+  owner @{HOME}/Maildir/**/.mbsyncstate rw,
+  owner @{HOME}/Maildir/**/.mbsyncstate.journal rw,
+  owner @{HOME}/Maildir/**/.mbsyncstate.lock wk,
+  owner @{HOME}/Maildir/**/.mbsyncstate.new rw,
+  owner @{HOME}/Maildir/**/.uidvalidity rwk,
+  owner @{HOME}/Maildir/**/cur/* rw,
+  owner @{HOME}/Maildir/**/new/* rw,
+  owner @{HOME}/Maildir/**/tmp/* rw,
+  include if exists <local/mbsync>
+}
+APPARMOR_EOF
+    echo "Created $apparmor_file"
+    echo "Restarting apparmor service..."
+    sudo systemctl restart apparmor.service 2>/dev/null || echo "Note: Could not restart apparmor service"
+fi
+
 # Get user inputs
 read -p "Enter your full email address: " email
 read -p "Enter your full name: " fullname
@@ -360,6 +414,11 @@ echo "Using F$next_fkey for this account (ACCOUNT$account_num)"
 echo "SMTP: $smtp_proto on port $smtp_port"
 echo
 
+# Create Maildir directory for this account
+maildir_path="$HOME/Maildir/${shortname}"
+mkdir -p "$maildir_path"
+echo "Created Maildir: $maildir_path"
+
 # Config file will be in the accounts subdirectory
 config_file="$HOME/.mutt/accounts/${shortname}"
 
@@ -385,14 +444,12 @@ for ((i=0; i<${#password}; i++)); do
     esac
 done
 
-# Create config file
-if [ "$use_starttls" = true ]; then
-    # STARTTLS - hardcode both passwords
-    cat > "$config_file" << EOF
+# Create mutt config file with Maildir
+cat > "$config_file" << EOF
 ## Receive options.
 set imap_user=$email
 set imap_pass="$escaped_pass"
-set folder = imaps://$email@$imap_server/
+set folder = ~/Maildir/${shortname}/
 set spoolfile = +INBOX
 set postponed = +Drafts
 set record = +Sent
@@ -413,37 +470,48 @@ $smtp_starttls
 # Mailboxes for sidebar
 unmailboxes *
 named-mailboxes "INBOX" "=INBOX"
+named-mailboxes "Drafts" "=Drafts"
+named-mailboxes "Sent" "=Sent"
+named-mailboxes "Junk" "=Junk"
+named-mailboxes "Trash" "=Trash"
+named-mailboxes "All" "=All"
 EOF
-else
-    # SSL/TLS - hardcode IMAP password, embed URL-encoded password in smtp_url
-    cat > "$config_file" << EOF
-## Receive options.
-set imap_user=$email
-set imap_pass="$escaped_pass"
-set folder = imaps://$email@$imap_server/
-set spoolfile = +INBOX
-set postponed = +Drafts
-set record = +Sent
-set status_format = "\$imap_user %f"
-## Send options.
-set smtp_url=$smtp_proto://$email:$encoded_pass@$smtp_server:$smtp_port
-set smtp_authenticators="plain:login"
-set from="$email"
-set use_from=yes
-set realname='$fullname'
-set hostname="$smtp_server"
-set signature="$fullname"
-# Connection options
-set ssl_force_tls = yes
-$smtp_starttls
-
-# Mailboxes for sidebar
-unmailboxes *
-named-mailboxes "INBOX" "=INBOX"
-EOF
-fi
 
 echo "Created config file: $config_file"
+
+# Create/append to .mbsyncrc
+mbsync_config="$HOME/.mbsyncrc"
+echo "Adding mbsync configuration..."
+
+cat >> "$mbsync_config" << EOF
+
+IMAPStore ${shortname}-remote
+Host $imap_server
+Port 993
+User $email
+Pass $password
+SSLType IMAPS
+CertificateFile /etc/ssl/certs/ca-certificates.crt
+
+MaildirStore ${shortname}-local
+Path ~/Maildir/${shortname}/
+Inbox ~/Maildir/${shortname}/INBOX
+Subfolders Verbatim
+
+Channel $email
+Far :${shortname}-remote:
+Near :${shortname}-local:
+Create Both
+Expunge Both
+Patterns *
+SyncState *
+MaxMessages 0
+ExpireUnread no
+# End profile
+
+EOF
+
+echo "Added mbsync profile to $mbsync_config"
 
 # Backup .muttrc
 cp "$mutt_config" "${mutt_config}.backup.$(date +%Y%m%d_%H%M%S)"
@@ -461,11 +529,11 @@ fi
 {
     head -n "$line_num" "$mutt_config"
     echo "# Switch to account ${account_num} (${shortname})"
-    echo "macro index,pager <f$next_fkey> '<sync-mailbox><enter-command>source $config_file<enter><change-folder>imaps://$email@$imap_server/INBOX<enter>'"
+    echo "macro index,pager <f$next_fkey> '<sync-mailbox><enter-command>source $config_file<enter><change-folder>~/Maildir/${shortname}/INBOX/<enter>'"
     echo ""
     echo "## ACCOUNT${account_num}"
     echo "source \"$config_file\""
-    echo "folder-hook \"imaps://$email@$imap_server/\" 'source $config_file;'"
+    echo "folder-hook \"~/Maildir/${shortname}/\" 'source $config_file;'"
     echo
     tail -n +$((line_num + 1)) "$mutt_config"
 } > "${mutt_config}.tmp"
@@ -475,7 +543,11 @@ mv "${mutt_config}.tmp" "$mutt_config"
 echo
 echo "=== Setup Complete ==="
 echo "Account: $email"
-echo "Config: $config_file"
+echo "Mutt config: $config_file"
+echo "Maildir: $maildir_path"
+echo "Mbsync config: Added to $mbsync_config"
+echo ""
+echo "To sync mail, run: mbsync $email"
 echo "Press F$next_fkey in mutt to switch to this account"
 echo
 echo "Restart mutt to use the new account."
