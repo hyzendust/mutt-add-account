@@ -26,6 +26,7 @@ set resolve = no
 auto_view text/html                                   # view HTML automatically
 alternative_order text/plain text/enriched text/html  # save HTML for last
 
+source ~/.mutt/sidebar.muttrc
 source ~/.mutt/vim-keys.rc
 source ~/.mutt/vombatidae.neomuttrc
 
@@ -49,6 +50,7 @@ else
         "auto_view text/html                                   # view HTML automatically"
         "alternative_order text/plain text/enriched text/html  # save HTML for last"
         ""
+        "source ~/.mutt/sidebar.muttrc"
         "source ~/.mutt/vim-keys.rc"
         "source ~/.mutt/vombatidae.neomuttrc"
         ""
@@ -72,6 +74,27 @@ fi
 
 # Create .mutt directory and subdirectories if they don't exist
 mkdir -p "$HOME/.mutt/accounts"
+
+# Create sidebar.muttrc if it doesn't exist
+sidebar_file="$HOME/.mutt/sidebar.muttrc"
+if [ ! -f "$sidebar_file" ]; then
+    cat > "$sidebar_file" << 'SIDEBAR_EOF'
+# Sidebar mappings
+set sidebar_visible = yes
+set sidebar_width = 20
+set sidebar_short_path = yes
+set sidebar_next_new_wrap = yes
+set mail_check_stats
+set sidebar_format = '%D%?F? [%F]?%* %?N?%N/? %?S?%S?'
+bind index,pager \Ck sidebar-prev
+bind index,pager \Cj sidebar-next
+bind index,pager \Co sidebar-open
+bind index,pager \Cp sidebar-prev-new
+bind index,pager \Cn sidebar-next-new
+bind index,pager B sidebar-toggle-visible
+SIDEBAR_EOF
+    echo "Created ~/.mutt/sidebar.muttrc"
+fi
 
 # Create vim-keys.rc if it doesn't exist
 vim_keys_file="$HOME/.mutt/vim-keys.rc"
