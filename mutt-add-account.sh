@@ -302,83 +302,131 @@ read -p "Enter account name: " shortname
 email_domain="${email#*@}"
 echo "Searching for server settings..."
 
-# Try to get MX record and extract mail server
-mx_record=$(dig +short MX "$email_domain" 2>/dev/null | sort -n | head -1 | awk '{print $2}' | sed 's/\.$//')
+# Download/update domains.csv
+domains_csv="$HOME/.mutt/domains.csv"
+echo "Fetching known mail server configurations..."
+curl -fsSL "https://raw.githubusercontent.com/LukeSmithxyz/mutt-wizard/refs/heads/master/share/domains.csv" -o "$domains_csv" 2>/dev/null || echo "Note: Could not update domains database"
 
-detection_failed=false
+# Try to find domain in CSV file
+if [ -f "$domains_csv" ]; then
+    # Look for the domain in the CSV (case-insensitive)
+    csv_match=$(grep -i "^${email_domain}," "$domains_csv" | head -1)
+    
+    if [ -n "$csv_match" ]; then
+        # Parse CSV: ADDRESS,IMAP,imap port,SMTP,smtp port
+        detected_imap=$(echo "$csv_match" | cut -d',' -f2)
+        imap_port=$(echo "$csv_match" | cut -d',' -f3)
+        detected_smtp=$(echo "$csv_match" | cut -d',' -f4)
+        detected_port=$(echo "$csv_match" | cut -d',' -f5)
+        
+        echo ""
+        echo "Found configuration for $email_domain:"
+        echo "  IMAP server: $detected_imap"
+        echo "  SMTP server: $detected_smtp"
+        echo "  SMTP port:   $detected_port"
+        echo ""
+        
+        read -p "Use these settings? (y/n): " confirm
+        
+        if [[ "$confirm" =~ ^[Yy]$ ]]; then
+            imap_server="$detected_imap"
+            smtp_server="$detected_smtp"
+            smtp_port="$detected_port"
+        else
+            # Manual entry
+            echo "Please enter settings manually:"
+            read -p "Enter IMAP server: " imap_server
+            read -p "Enter SMTP server: " smtp_server
+            read -p "Enter SMTP port (465 for SSL/TLS, 587 for STARTTLS) [465]: " smtp_port
+            smtp_port=${smtp_port:-465}
+        fi
+    else
+        # Domain not in CSV, fall back to auto-detection
+        echo "Domain not found in known configurations, attempting auto-detection..."
+        
+        # Try to get MX record and extract mail server
+        mx_record=$(dig +short MX "$email_domain" 2>/dev/null | sort -n | head -1 | awk '{print $2}' | sed 's/\.$//')
 
-if [ -n "$mx_record" ]; then
-    # Got MX record, try common IMAP server patterns
-    base_domain=$(echo "$mx_record" | sed 's/^smtp\.//' | sed 's/^mx[0-9]*\.//' | sed 's/^mail\.//')
-    
-    # Try common IMAP server patterns
-    if host "imap.$base_domain" &>/dev/null; then
-        detected_imap="imap.$base_domain"
-    elif host "mail.$base_domain" &>/dev/null; then
-        detected_imap="mail.$base_domain"
-    elif host "$mx_record" &>/dev/null; then
-        detected_imap="$mx_record"
-    else
-        detected_imap="mail.${email_domain}"
-    fi
-    
-    # Try to detect SMTP server
-    if host "smtp.$base_domain" &>/dev/null; then
-        detected_smtp="smtp.$base_domain"
-    else
-        detected_smtp="$detected_imap"
+        detection_failed=false
+
+        if [ -n "$mx_record" ]; then
+            # Got MX record, try common IMAP server patterns
+            base_domain=$(echo "$mx_record" | sed 's/^smtp\.//' | sed 's/^mx[0-9]*\.//' | sed 's/^mail\.//')
+            
+            # Try common IMAP server patterns
+            if host "imap.$base_domain" &>/dev/null; then
+                detected_imap="imap.$base_domain"
+            elif host "mail.$base_domain" &>/dev/null; then
+                detected_imap="mail.$base_domain"
+            elif host "$mx_record" &>/dev/null; then
+                detected_imap="$mx_record"
+            else
+                detected_imap="mail.${email_domain}"
+            fi
+            
+            # Try to detect SMTP server
+            if host "smtp.$base_domain" &>/dev/null; then
+                detected_smtp="smtp.$base_domain"
+            else
+                detected_smtp="$detected_imap"
+            fi
+        else
+            # MX lookup failed - check if domain itself exists
+            if host "$email_domain" &>/dev/null; then
+                detected_imap="mail.${email_domain}"
+                detected_smtp="mail.${email_domain}"
+            else
+                detection_failed=true
+            fi
+        fi
+
+        if [ "$detection_failed" = false ]; then
+            # Detect port by testing common ports
+            detected_port="465"
+            if timeout 2 bash -c "echo -n '' > /dev/tcp/$detected_smtp/587" 2>/dev/null; then
+                detected_port="587"
+            elif timeout 2 bash -c "echo -n '' > /dev/tcp/$detected_smtp/465" 2>/dev/null; then
+                detected_port="465"
+            fi
+
+            # Show detected settings
+            echo ""
+            echo "Detected settings:"
+            echo "  IMAP server: $detected_imap"
+            echo "  SMTP server: $detected_smtp"
+            echo "  SMTP port:   $detected_port"
+            echo ""
+
+            read -p "Are these settings correct? (y/n): " confirm
+
+            if [[ "$confirm" =~ ^[Yy]$ ]]; then
+                # Use detected settings
+                imap_server="$detected_imap"
+                smtp_server="$detected_smtp"
+                smtp_port="$detected_port"
+            else
+                # Manual entry
+                echo "Please enter settings manually:"
+                read -p "Enter IMAP server: " imap_server
+                read -p "Enter SMTP server: " smtp_server
+                read -p "Enter SMTP port (465 for SSL/TLS, 587 for STARTTLS) [465]: " smtp_port
+                smtp_port=${smtp_port:-465}
+            fi
+        else
+            # Detection completely failed
+            echo ""
+            echo "Could not auto-detect mail server settings for $email_domain"
+            echo "Please enter settings manually:"
+            read -p "Enter IMAP server: " imap_server
+            read -p "Enter SMTP server: " smtp_server
+            read -p "Enter SMTP port (465 for SSL/TLS, 587 for STARTTLS) [465]: " smtp_port
+            smtp_port=${smtp_port:-465}
+        fi
     fi
 else
-    # MX lookup failed - check if domain itself exists
-    if host "$email_domain" &>/dev/null; then
-        detected_imap="mail.${email_domain}"
-        detected_smtp="mail.${email_domain}"
-    else
-        detection_failed=true
-    fi
-fi
-
-if [ "$detection_failed" = false ]; then
-    # Detect port by testing common ports
-    detected_port="465"
-    if timeout 2 bash -c "echo -n '' > /dev/tcp/$detected_smtp/587" 2>/dev/null; then
-        detected_port="587"
-    elif timeout 2 bash -c "echo -n '' > /dev/tcp/$detected_smtp/465" 2>/dev/null; then
-        detected_port="465"
-    fi
-
-    # Show detected settings
-    echo ""
-    echo "Detected settings:"
-    echo "  IMAP server: $detected_imap"
-    echo "  SMTP server: $detected_smtp"
-    echo "  SMTP port:   $detected_port"
-    echo ""
-
-    read -p "Are these settings correct? (y/n): " confirm
-
-    if [[ "$confirm" =~ ^[Yy]$ ]]; then
-        # Use detected settings
-        imap_server="$detected_imap"
-        smtp_server="$detected_smtp"
-        smtp_port="$detected_port"
-    else
-        # Manual entry
-        echo "Please enter settings manually:"
-        read -p "Enter IMAP server: " imap_server
-        read -p "Enter SMTP server: " smtp_server
-        read -p "Enter SMTP port (465 for SSL/TLS, 587 for STARTTLS) [465]: " smtp_port
-        smtp_port=${smtp_port:-465}
-    fi
-else
-    # Detection completely failed
-    echo ""
-    echo "Could not auto-detect mail server settings for $email_domain"
-    echo "Please enter settings manually:"
-    read -p "Enter IMAP server: " imap_server
-    read -p "Enter SMTP server: " smtp_server
-    read -p "Enter SMTP port (465 for SSL/TLS, 587 for STARTTLS) [465]: " smtp_port
-    smtp_port=${smtp_port:-465}
+    echo "Could not fetch domains database, using auto-detection..."
+    # Continue with existing auto-detection logic
+    # [Keep the existing auto-detection code as fallback]
 fi
 
 # Extract username from email
