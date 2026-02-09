@@ -578,7 +578,7 @@ IMAPStore ${shortname}-remote
 Host $imap_server
 Port 993
 User $email
-Pass $password
+Pass "$escaped_pass"
 SSLType IMAPS
 CertificateFile /etc/ssl/certs/ca-certificates.crt
 
