@@ -92,6 +92,7 @@ bind index,pager \Co sidebar-open
 bind index,pager \Cp sidebar-prev-new
 bind index,pager \Cn sidebar-next-new
 bind index,pager B sidebar-toggle-visible
+
 SIDEBAR_EOF
     echo "Created ~/.mutt/sidebar.muttrc"
 fi
@@ -408,6 +409,11 @@ set signature="$fullname"
 # Connection options
 set ssl_force_tls = yes
 $smtp_starttls
+
+# Mailboxes for sidebar
+unmailboxes *
+named-mailboxes "INBOX" "=INBOX"
+named-mailboxes "All" "=All"
 EOF
 else
     # SSL/TLS - hardcode IMAP password, embed URL-encoded password in smtp_url
@@ -431,6 +437,11 @@ set signature="$fullname"
 # Connection options
 set ssl_force_tls = yes
 $smtp_starttls
+
+# Mailboxes for sidebar
+unmailboxes *
+named-mailboxes "INBOX" "=INBOX"
+named-mailboxes "All" "=All"
 EOF
 fi
 
