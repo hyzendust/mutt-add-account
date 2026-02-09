@@ -413,7 +413,6 @@ $smtp_starttls
 # Mailboxes for sidebar
 unmailboxes *
 named-mailboxes "INBOX" "=INBOX"
-named-mailboxes "All" "=All"
 EOF
 else
     # SSL/TLS - hardcode IMAP password, embed URL-encoded password in smtp_url
@@ -441,7 +440,6 @@ $smtp_starttls
 # Mailboxes for sidebar
 unmailboxes *
 named-mailboxes "INBOX" "=INBOX"
-named-mailboxes "All" "=All"
 EOF
 fi
 
