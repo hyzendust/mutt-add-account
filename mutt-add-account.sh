@@ -470,7 +470,7 @@ echo "Created Maildir: $maildir_path"
 # Config file will be in the accounts subdirectory
 config_file="$HOME/.mutt/accounts/${shortname}"
 
-# Escape password for use in double quotes (for IMAP)
+# Escape password for use in double quotes (for IMAP / mutt)
 # Escape backslashes first, then double quotes, then dollar signs, then backticks
 escaped_pass="${password//\\/\\\\}"
 escaped_pass="${escaped_pass//\"/\\\"}"
@@ -491,6 +491,14 @@ for ((i=0; i<${#password}; i++)); do
             ;;
     esac
 done
+
+# JSON-escape password for goimapnotify config
+# Escape backslashes, double quotes, and common control characters
+json_escaped_pass="${password//\\/\\\\}"
+json_escaped_pass="${json_escaped_pass//\"/\\\"}"
+json_escaped_pass="${json_escaped_pass//	/\\t}"   # tab
+json_escaped_pass="${json_escaped_pass//$'\n'/\\n}" # newline
+json_escaped_pass="${json_escaped_pass//$'\r'/\\r}" # carriage return
 
 # Detect if this is a Gmail account
 is_gmail=false
@@ -554,6 +562,43 @@ named-mailboxes "Spam" "=[Gmail]/Spam"
 named-mailboxes "Trash" "=[Gmail]/Trash"
 named-mailboxes "All Mail" "=[Gmail]/All Mail"
 EOF
+    # Boxes for goimapnotify (Gmail) - list of maps with per-box handlers
+    notify_boxes_yaml="    - mailbox: \"INBOX\"
+      onNewMail: \"mbsync $email\"
+      onNewMailPost: \"\"
+      onChangedMail: \"mbsync $email\"
+      onChangedMailPost: \"\"
+      onDeletedMail: \"mbsync $email\"
+      onDeletedMailPost: \"\"
+    - mailbox: \"[Gmail]/Drafts\"
+      onNewMail: \"mbsync $email\"
+      onNewMailPost: \"\"
+      onChangedMail: \"mbsync $email\"
+      onChangedMailPost: \"\"
+      onDeletedMail: \"mbsync $email\"
+      onDeletedMailPost: \"\"
+    - mailbox: \"[Gmail]/Sent Mail\"
+      onNewMail: \"mbsync $email\"
+      onNewMailPost: \"\"
+      onChangedMail: \"mbsync $email\"
+      onChangedMailPost: \"\"
+      onDeletedMail: \"mbsync $email\"
+      onDeletedMailPost: \"\"
+    - mailbox: \"[Gmail]/Spam\"
+      onNewMail: \"mbsync $email\"
+      onNewMailPost: \"\"
+      onChangedMail: \"mbsync $email\"
+      onChangedMailPost: \"\"
+      onDeletedMail: \"mbsync $email\"
+      onDeletedMailPost: \"\"
+    - mailbox: \"[Gmail]/Trash\"
+      onNewMail: \"mbsync $email\"
+      onNewMailPost: \"\"
+      onChangedMail: \"mbsync $email\"
+      onChangedMailPost: \"\"
+      onDeletedMail: \"mbsync $email\"
+      onDeletedMailPost: \"\"
+"
 else
     cat >> "$config_file" << 'EOF'
 # Mailboxes for sidebar
@@ -564,6 +609,43 @@ named-mailboxes "Sent" "=Sent"
 named-mailboxes "Junk" "=Junk"
 named-mailboxes "Trash" "=Trash"
 EOF
+    # Boxes for goimapnotify (standard) - list of maps with per-box handlers
+    notify_boxes_yaml="    - mailbox: \"INBOX\"
+      onNewMail: \"mbsync $email\"
+      onNewMailPost: \"\"
+      onChangedMail: \"mbsync $email\"
+      onChangedMailPost: \"\"
+      onDeletedMail: \"mbsync $email\"
+      onDeletedMailPost: \"\"
+    - mailbox: \"Drafts\"
+      onNewMail: \"mbsync $email\"
+      onNewMailPost: \"\"
+      onChangedMail: \"mbsync $email\"
+      onChangedMailPost: \"\"
+      onDeletedMail: \"mbsync $email\"
+      onDeletedMailPost: \"\"
+    - mailbox: \"Sent\"
+      onNewMail: \"mbsync $email\"
+      onNewMailPost: \"\"
+      onChangedMail: \"mbsync $email\"
+      onChangedMailPost: \"\"
+      onDeletedMail: \"mbsync $email\"
+      onDeletedMailPost: \"\"
+    - mailbox: \"Junk\"
+      onNewMail: \"mbsync $email\"
+      onNewMailPost: \"\"
+      onChangedMail: \"mbsync $email\"
+      onChangedMailPost: \"\"
+      onDeletedMail: \"mbsync $email\"
+      onDeletedMailPost: \"\"
+    - mailbox: \"Trash\"
+      onNewMail: \"mbsync $email\"
+      onNewMailPost: \"\"
+      onChangedMail: \"mbsync $email\"
+      onChangedMailPost: \"\"
+      onDeletedMail: \"mbsync $email\"
+      onDeletedMailPost: \"\"
+"
 fi
 
 echo "Created config file: $config_file"
@@ -602,7 +684,87 @@ EOF
 
 echo "Added mbsync profile to $mbsync_config"
 
+# -------------------------------------------------------
+# goimapnotify configuration
+# -------------------------------------------------------
+notify_config_dir="$HOME/.config/goimapnotify"
+notify_config_file="$notify_config_dir/goimapnotify.yaml"
+
+mkdir -p "$notify_config_dir"
+echo "Updating goimapnotify configuration..."
+
+# goimapnotify.yaml uses a top-level "configurations:" key with a list of account objects.
+# If the file doesn't exist, create it with the first account.
+# If it exists, append the new account entry to the configurations list.
+
+new_entry=$(cat << EOF
+  - host: "$imap_server"
+    port: 993
+    tls: true
+    tlsOptions:
+      rejectUnauthorized: false
+    username: "$email"
+    password: "$json_escaped_pass"
+    boxes:
+$notify_boxes_yaml
+EOF
+)
+
+if [ ! -f "$notify_config_file" ]; then
+    printf 'configurations:\n%s\n' "$new_entry" > "$notify_config_file"
+    echo "Created $notify_config_file"
+else
+    printf '%s\n' "$new_entry" >> "$notify_config_file"
+    echo "Appended account to $notify_config_file"
+fi
+
+# -------------------------------------------------------
+# systemd user service for goimapnotify
+# -------------------------------------------------------
+systemd_user_dir="$HOME/.config/systemd/user"
+service_file="$systemd_user_dir/goimapnotify.service"
+
+mkdir -p "$systemd_user_dir"
+
+if [ ! -f "$service_file" ]; then
+    echo "Creating systemd user service..."
+    cat > "$service_file" << EOF
+[Unit]
+Description=goimapnotify
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=${HOME}/go/bin/goimapnotify -conf ${HOME}/.config/goimapnotify/goimapnotify.yaml
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
+EOF
+    echo "Created $service_file"
+else
+    echo "Service file already exists: $service_file (skipping)"
+fi
+
+# Reload systemd and (re)start the service
+echo "Reloading systemd user daemon..."
+systemctl --user daemon-reload
+
+echo "Enabling goimapnotify service..."
+systemctl --user enable goimapnotify.service
+
+echo "Restarting goimapnotify service..."
+systemctl --user stop goimapnotify.service 2>/dev/null || true
+systemctl --user start goimapnotify.service
+
+echo "goimapnotify service status:"
+systemctl --user status goimapnotify.service --no-pager || true
+
+# -------------------------------------------------------
 # Backup .muttrc
+# -------------------------------------------------------
 cp "$mutt_config" "${mutt_config}.backup.$(date +%Y%m%d_%H%M%S)"
 echo "Backed up .muttrc"
 
@@ -631,12 +793,14 @@ mv "${mutt_config}.tmp" "$mutt_config"
 
 echo
 echo "=== Setup Complete ==="
-echo "Account: $email"
-echo "Mutt config: $config_file"
-echo "Maildir: $maildir_path"
-echo "Mbsync config: Added to $mbsync_config"
+echo "Account:          $email"
+echo "Mutt config:      $config_file"
+echo "Maildir:          $maildir_path"
+echo "Mbsync config:    Added to $mbsync_config"
+echo "Notify config:    $notify_config_file"
+echo "Systemd service:  $service_file"
 echo ""
-echo "To sync mail, run: mbsync $email"
+echo "To sync mail manually, run: mbsync $email"
 echo "Press F$next_fkey in mutt to switch to this account"
 echo
 echo "Restart mutt to use the new account."
