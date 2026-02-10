@@ -566,7 +566,7 @@ named-mailboxes "All Mail" "=[Gmail]/All Mail"
 EOF
     # Boxes for goimapnotify (Gmail) - list of maps with per-box handlers
     notify_boxes_yaml="    - mailbox: \"INBOX\"
-      onNewMail: \"mbsync '$email' && notify-send -i mail-unread 'New Mail' '$email'\"
+      onNewMail: \"mbsync '$email' && notify-send -i mail-unread 'New Mail' '$email' && paplay /usr/share/sounds/freedesktop/stereo/message-new-instant.oga\"
       onNewMailPost: \"\"
       onChangedMail: \"mbsync $email\"
       onChangedMailPost: \"\"
@@ -613,7 +613,7 @@ named-mailboxes "Trash" "=Trash"
 EOF
     # Boxes for goimapnotify (standard) - list of maps with per-box handlers
     notify_boxes_yaml="    - mailbox: \"INBOX\"
-      onNewMail: \"mbsync '$email' && notify-send -i mail-unread 'New Mail' '$email'\"
+      onNewMail: \"mbsync '$email' && notify-send -i mail-unread 'New Mail' '$email' && paplay /usr/share/sounds/freedesktop/stereo/message-new-instant.oga\"
       onNewMailPost: \"\"
       onChangedMail: \"mbsync $email\"
       onChangedMailPost: \"\"
