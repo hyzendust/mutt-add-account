@@ -114,22 +114,30 @@ if [ ! -f "$vim_keys_file" ]; then
 
 # Unbinds
 unbind pager,index \ek
+unbind index,pager l
+unbind pager O
+unbind index \Cn
+unbind index \Cp
+unbind index U
+unbind index \Ct
+unbind index T
 
 # Moving around
 bind attach,browser,index       g   noop
 bind attach,browser,index       gg  first-entry
 bind attach,browser,index       G   last-entry
-bind pager                      g  noop
+bind pager                      g   noop
 bind pager                      gg  top
 bind pager                      G   bottom
 bind pager                      k   previous-line
 bind pager                      j   next-line
+bind pager o exit
 
 # Deletion
 bind pager,index                d   noop
 bind pager,index                dd  delete-message
-bind index                      \Cd undelete-pattern
-unbind index U
+bind index                      \Cd delete-pattern
+bind index                      D undelete-pattern
 
 # Mail & Reply
 bind index                      \Cm list-reply # Doesn't work currently
@@ -143,6 +151,11 @@ bind pager,index                gt  next-thread
 bind pager,index                gT  previous-thread
 bind index                      za  collapse-thread
 bind index                      zA  collapse-all # Missing :folddisable/foldenable
+
+# Others
+bind index \Ct tag-pattern
+bind index T untag-pattern
+bind index L limit
 
 # Open mail
 bind index <return> display-message
