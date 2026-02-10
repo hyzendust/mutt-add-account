@@ -86,15 +86,17 @@ sidebar_file="$HOME/.mutt/sidebar.muttrc"
 if [ ! -f "$sidebar_file" ]; then
     cat > "$sidebar_file" << 'SIDEBAR_EOF'
 # Sidebar mappings
+
 set sidebar_visible = yes
 set sidebar_width = 20
 set sidebar_short_path = yes
 set sidebar_next_new_wrap = yes
 set mail_check_stats
 set sidebar_format = '%D%?F? [%F]?%* %?N?%N/? %?S?%S?'
-bind index,pager \Ck sidebar-prev
-bind index,pager \Cj sidebar-next
-bind index,pager \Co sidebar-open
+bind index,pager K sidebar-prev
+bind index,pager J sidebar-next
+bind index,pager O sidebar-open
+bind index \Co sort-mailbox
 bind index,pager \Cp sidebar-prev-new
 bind index,pager \Cn sidebar-next-new
 bind index,pager B sidebar-toggle-visible
