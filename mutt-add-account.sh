@@ -93,13 +93,10 @@ set sidebar_short_path = yes
 set sidebar_next_new_wrap = yes
 set mail_check_stats
 set sidebar_format = '%D%?F? [%F]?%* %?N?%N/? %?S?%S?'
-bind index,pager K sidebar-prev
-bind index,pager J sidebar-next
-bind index,pager O sidebar-open
-bind index \Co sort-mailbox
-bind index,pager \Cp sidebar-prev-new
-bind index,pager \Cn sidebar-next-new
-bind index,pager B sidebar-toggle-visible
+bind index,pager \ep sidebar-prev
+bind index,pager \en sidebar-next
+bind index,pager \eo sidebar-open
+bind index,pager \eB sidebar-toggle-visible
 
 # Use named-mailboxes to show mailboxes in sidebar
 # These will be populated dynamically by each account config
@@ -132,6 +129,7 @@ unbind index U
 
 # Mail & Reply
 bind index                      \Cm list-reply # Doesn't work currently
+bind index \Co sort-mailbox
 
 # Threads
 bind browser,pager,index        N   search-opposite
