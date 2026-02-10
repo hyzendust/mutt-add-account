@@ -123,19 +123,16 @@ bind pager                      gg  top
 bind pager                      G   bottom
 bind pager                      k   previous-line
 bind pager                      j   next-line
-# Scrolling
-bind attach,browser,pager,index \CF next-page
-bind attach,browser,pager,index \CB previous-page
-bind attach,browser,pager,index \Cu half-up
-bind attach,browser,pager,index \Cd half-down
-bind browser,pager              \Ce next-line
-bind browser,pager              \Cy previous-line
-bind index                      \Ce next-line
-bind index                      \Cy previous-line
+
+# Deletion
 bind pager,index                d   noop
 bind pager,index                dd  delete-message
+bind index                      \Cd undelete-pattern
+unbind index U
+
 # Mail & Reply
 bind index                      \Cm list-reply # Doesn't work currently
+
 # Threads
 bind browser,pager,index        N   search-opposite
 bind pager,index                dT  delete-thread
@@ -144,11 +141,14 @@ bind pager,index                gt  next-thread
 bind pager,index                gT  previous-thread
 bind index                      za  collapse-thread
 bind index                      zA  collapse-all # Missing :folddisable/foldenable
+
 # Open mail
 bind index <return> display-message
+
 # Full headers
 macro index h "<enter-command>unset weed<enter><display-message><enter-command>set weed<enter>" "show all headers"
 macro pager h "<exit><enter-command>unset weed<enter><display-message><enter-command>set weed<enter>" "show all headers"
+
 # Unmark all marked for deleted and tagged messages
 bind index u noop
 bind pager u noop
