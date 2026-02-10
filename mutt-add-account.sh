@@ -791,6 +791,24 @@ fi
 
 mv "${mutt_config}.tmp" "$mutt_config"
 
+# -------------------------------------------------------
+# Create/update neomutt wrapper script
+# -------------------------------------------------------
+wrapper_script="$HOME/.local/bin/neomutt"
+mkdir -p "$HOME/.local/bin"
+
+# Collect all configured email addresses from mbsyncrc channels
+# Each "Channel <email>" line in .mbsyncrc is one account to sync
+cat > "$wrapper_script" << 'WRAPPER_EOF'
+#!/bin/bash
+mbsync -q -a & 
+exec /usr/bin/neomutt
+WRAPPER_EOF
+
+chmod +x "$wrapper_script"
+echo "Created wrapper script: $wrapper_script"
+echo "(make sure ~/.local/bin is in your PATH)"
+
 echo
 echo "=== Setup Complete ==="
 echo "Account:          $email"
