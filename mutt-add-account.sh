@@ -111,6 +111,10 @@ if [ ! -f "$vim_keys_file" ]; then
 #------------------------------------------------------------
 # Vi Key Bindings
 #------------------------------------------------------------
+
+# Unbinds
+unbind pager,index \ek
+
 # Moving around
 bind attach,browser,index       g   noop
 bind attach,browser,index       gg  first-entry
