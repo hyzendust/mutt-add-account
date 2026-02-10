@@ -144,6 +144,7 @@ bind index                      zA  collapse-all # Missing :folddisable/foldenab
 
 # Open mail
 bind index <return> display-message
+bind index o display-message
 
 # Full headers
 macro index h "<enter-command>unset weed<enter><display-message><enter-command>set weed<enter>" "show all headers"
