@@ -81,6 +81,24 @@ fi
 # Create .mutt directory and subdirectories if they don't exist
 mkdir -p "$HOME/.mutt/accounts"
 
+# Create unbinds.rc if it doesn't exist
+sidebar_file="$HOME/.mutt/unbinds.rc"
+if [ ! -f "$sidebar_file" ]; then
+    cat > "$sidebar_file" << 'UNBINDS_EOF'
+# Unbinds
+
+unbind pager,index \ek
+unbind index,pager l
+unbind pager O
+unbind pager,index \Cn
+unbind pager,index \Cp
+unbind index U
+unbind index \Ct
+unbind index T
+UNBINDS_EOF
+    echo "Created ~/.mutt/unbinds.rc"
+fi
+
 # Create sidebar.muttrc if it doesn't exist
 sidebar_file="$HOME/.mutt/sidebar.muttrc"
 if [ ! -f "$sidebar_file" ]; then
@@ -93,8 +111,8 @@ set sidebar_short_path = yes
 set sidebar_next_new_wrap = yes
 set mail_check_stats
 set sidebar_format = '%D%?F? [%F]?%* %?N?%N/? %?S?%S?'
-bind index,pager \ep sidebar-prev
-bind index,pager \en sidebar-next
+bind index,pager \ek sidebar-prev
+bind index,pager \ej sidebar-next
 bind index,pager \eo sidebar-open
 bind index,pager \eB sidebar-toggle-visible
 
@@ -111,16 +129,6 @@ if [ ! -f "$vim_keys_file" ]; then
 #------------------------------------------------------------
 # Vi Key Bindings
 #------------------------------------------------------------
-
-# Unbinds
-unbind pager,index \ek
-unbind index,pager l
-unbind pager O
-unbind index \Cn
-unbind index \Cp
-unbind index U
-unbind index \Ct
-unbind index T
 
 # Moving around
 bind attach,browser,index       g   noop
@@ -139,12 +147,7 @@ bind pager,index                dd  delete-message
 bind index                      \Cd delete-pattern
 bind index                      D undelete-pattern
 
-# Mail & Reply
-bind index                      \Cm list-reply # Doesn't work currently
-bind index \Co sort-mailbox
-
 # Threads
-bind browser,pager,index        N   search-opposite
 bind pager,index                dT  delete-thread
 bind pager,index                dt  delete-subthread
 bind pager,index                gt  next-thread
@@ -156,6 +159,12 @@ bind index                      zA  collapse-all # Missing :folddisable/foldenab
 bind index \Ct tag-pattern
 bind index T untag-pattern
 bind index L limit
+bind index                      \Cm list-reply
+bind index                      \Co sort-mailbox
+bind pager,index                \Cp print-message
+bind browser,pager,index        n   search-next
+bind browser,pager,index        N   search-opposite
+bind browser,pager,index        p   search-opposite
 
 # Open mail
 bind index <return> display-message
