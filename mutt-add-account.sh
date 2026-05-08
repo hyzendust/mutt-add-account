@@ -88,6 +88,7 @@ if [ ! -f "$sidebar_file" ]; then
 # Unbinds
 
 unbind pager,index \ek
+unbind pager,index \ej
 unbind index,pager l
 unbind pager O
 unbind pager,index \Cn
@@ -111,8 +112,8 @@ set sidebar_short_path = yes
 set sidebar_next_new_wrap = yes
 set mail_check_stats
 set sidebar_format = '%D%?F? [%F]?%* %?N?%N/? %?S?%S?'
-bind index,pager \ek sidebar-prev
-bind index,pager \ej sidebar-next
+macro index,pager \ep "<sidebar-prev><sidebar-open>" "go to previous mailbox"
+macro index,pager \en "<sidebar-next><sidebar-open>" "go to next mailbox"
 bind index,pager \eo sidebar-open
 bind index,pager \eB sidebar-toggle-visible
 
@@ -162,9 +163,9 @@ bind index L limit
 bind index                      \Cm list-reply
 bind index                      \Co sort-mailbox
 bind pager,index                \Cp print-message
-bind browser,pager,index        n   search-next
-bind browser,pager,index        N   search-opposite
-bind browser,pager,index        p   search-opposite
+bind browser,index              n   search-next
+bind browser,index              N   search-opposite
+bind browser,index              p   search-opposite
 
 # Open mail
 bind index <return> display-message
@@ -199,7 +200,7 @@ if [ ! -f "$vombat_file" ]; then
 #   0.1 - Initial version
 # --- vombatidae text colors ---
 #  color normal         color230      color234
-#  color message        color230      color234
+#  color normal         color230      color234
 # --- slightly less yellow text colors ---
 color normal            color253        color234 # mod
 # color normal          color253        color233 # mod
