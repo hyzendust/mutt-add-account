@@ -18,6 +18,7 @@ unset imap_passive
 set mail_check = 15
 set timeout = 10
 set mbox_type=Maildir
+set mailcap_path = ~/.mailcap
 set use_envelope_from = yes
 set sort=reverse-date
 set ssl_verify_host = no
@@ -33,6 +34,9 @@ source ~/.mutt/vombatidae.neomuttrc
 
 # Clear any default mailboxes before loading account configs
 unmailboxes *
+
+# URLScan
+macro index,pager \cb "<pipe-message> urlscan<enter>" "scan for URLs"
 
 # ---------------------------------------------------------------------------
 # Static sidebar — all accounts and their folders
@@ -79,6 +83,7 @@ SIDEBAR_BLOCK_EOF
         "set mail_check = 15"
         "set timeout = 10"
         "set mbox_type=Maildir"
+        "set mailcap_path = ~/.mailcap"
         "set use_envelope_from = yes"
         "set sort=reverse-date"
         "set ssl_verify_host = no"
@@ -93,6 +98,9 @@ SIDEBAR_BLOCK_EOF
         ""
         "# Clear any default mailboxes before loading account configs"
         "unmailboxes *"
+        ""
+        "# URLScan"
+        "macro index,pager \cb \"<pipe-message> urlscan<enter>\" \"scan for URLs\""
         ""
     )
     
@@ -350,6 +358,17 @@ APPARMOR_EOF
     echo "Created $apparmor_file"
     echo "Restarting apparmor service..."
     sudo systemctl restart apparmor.service 2>/dev/null || echo "Note: Could not restart apparmor service"
+fi
+
+# Create/update ~/.mailcap with lynx HTML handler
+mailcap_file="$HOME/.mailcap"
+mailcap_line="text/html; lynx -assume_charset=%{charset} -display_charset=utf-8 -stdin -dump; copiousoutput"
+if [ ! -f "$mailcap_file" ]; then
+    echo "$mailcap_line" > "$mailcap_file"
+    echo "Created ~/.mailcap"
+elif ! grep -qF "$mailcap_line" "$mailcap_file"; then
+    echo "$mailcap_line" >> "$mailcap_file"
+    echo "Updated ~/.mailcap"
 fi
 
 # Get user inputs
@@ -651,7 +670,7 @@ if [ "$is_gmail" = true ]; then
 else
     # Boxes for goimapnotify (standard) - list of maps with per-box handlers
     notify_boxes_yaml="    - mailbox: \"INBOX\"
-      onNewMail: \"mbsync '$email' && notify-send -i mail-unread 'New Mail' '$email' && paplay /usr/share/sounds/freedesktop/stereo/message-new-instant.oga\"
+      onNewMail: \"mbsync '$email' && MAIL=\$(ls -t ~/Maildir/${shortname}/INBOX/cur/ | head -1) && FROM=\$(grep -m1 '^From:' ~/Maildir/${shortname}/INBOX/cur/\$MAIL | cut -c6-50) && SUBJ=\$(grep -m1 '^Subject:' ~/Maildir/${shortname}/INBOX/cur/\$MAIL | cut -c9-60) && notify-send -i mail-unread 'New Mail - $email' \"\$FROM\n\$SUBJ\" && paplay /usr/share/sounds/freedesktop/stereo/message-new-instant.oga\"
       onNewMailPost: \"\"
       onChangedMail: \"mbsync $email\"
       onChangedMailPost: \"\"
