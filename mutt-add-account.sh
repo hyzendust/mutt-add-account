@@ -26,6 +26,7 @@ set resolve = no
 auto_view text/html                                   # view HTML automatically
 alternative_order text/plain text/enriched text/html  # save HTML for last
 
+source ~/.mutt/unbinds.rc
 source ~/.mutt/sidebar.muttrc
 source ~/.mutt/vim-keys.rc
 source ~/.mutt/vombatidae.neomuttrc
@@ -33,9 +34,42 @@ source ~/.mutt/vombatidae.neomuttrc
 # Clear any default mailboxes before loading account configs
 unmailboxes *
 
+# ---------------------------------------------------------------------------
+# Static sidebar — all accounts and their folders
+# ---------------------------------------------------------------------------
+
+# END_SIDEBAR
+
 MUTTRC_EOF
     echo "Created ~/.muttrc"
 else
+    # Ensure the END_SIDEBAR marker exists (for scripts run against a pre-existing .muttrc)
+    if ! grep -q "^# END_SIDEBAR" "$mutt_config"; then
+        # Check if the static sidebar block already exists
+        if grep -q "^# ---------------------------------------------------------------------------" "$mutt_config"; then
+            # Append marker after the last named-mailboxes line in the sidebar block
+            # Find the line number of the last named-mailboxes line
+            last_nm=$(grep -n "^named-mailboxes" "$mutt_config" | tail -1 | cut -d: -f1)
+            if [ -n "$last_nm" ]; then
+                sed -i "${last_nm}a\\\\n# END_SIDEBAR" "$mutt_config"
+            else
+                # No named-mailboxes yet — insert marker after the sidebar header comment
+                sed -i '/^# Static sidebar/a\\n# END_SIDEBAR' "$mutt_config"
+            fi
+        else
+            # No sidebar block at all — append the full block
+            cat >> "$mutt_config" << 'SIDEBAR_BLOCK_EOF'
+
+# ---------------------------------------------------------------------------
+# Static sidebar — all accounts and their folders
+# ---------------------------------------------------------------------------
+
+# END_SIDEBAR
+
+SIDEBAR_BLOCK_EOF
+        fi
+    fi
+
     # Check and update/add required options
     required_options=(
         "set header_cache = \"~/.cache/mutt\""
@@ -107,8 +141,10 @@ if [ ! -f "$sidebar_file" ]; then
 # Sidebar mappings
 
 set sidebar_visible = yes
-set sidebar_width = 20
+set sidebar_width = 26
 set sidebar_short_path = yes
+set sidebar_delim_chars = "/"
+set sidebar_component_depth = 0
 set sidebar_next_new_wrap = yes
 set mail_check_stats
 set sidebar_format = '%D%?F? [%F]?%* %?N?%N/? %?S?%S?'
@@ -116,9 +152,6 @@ macro index,pager \ep "<sidebar-prev><sidebar-open>" "go to previous mailbox"
 macro index,pager \en "<sidebar-next><sidebar-open>" "go to next mailbox"
 bind index,pager \eo sidebar-open
 bind index,pager \eB sidebar-toggle-visible
-
-# Use named-mailboxes to show mailboxes in sidebar
-# These will be populated dynamically by each account config
 SIDEBAR_EOF
     echo "Created ~/.mutt/sidebar.muttrc"
 fi
@@ -576,20 +609,8 @@ $smtp_starttls
 
 EOF
 
-# Add mailboxes based on account type
+# Add mailboxes based on account type — also build goimapnotify boxes
 if [ "$is_gmail" = true ]; then
-    cat >> "$config_file" << 'EOF'
-# Mailboxes for sidebar
-unmailboxes *
-named-mailboxes "INBOX" "=INBOX"
-named-mailboxes "Drafts" "=[Gmail]/Drafts"
-named-mailboxes "Sent" "=[Gmail]/Sent Mail"
-named-mailboxes "Important" "=[Gmail]/Important"
-named-mailboxes "Starred" "=[Gmail]/Starred"
-named-mailboxes "Spam" "=[Gmail]/Spam"
-named-mailboxes "Trash" "=[Gmail]/Trash"
-named-mailboxes "All Mail" "=[Gmail]/All Mail"
-EOF
     # Boxes for goimapnotify (Gmail) - list of maps with per-box handlers
     notify_boxes_yaml="    - mailbox: \"INBOX\"
       onNewMail: \"mbsync '$email' && notify-send -i mail-unread 'New Mail' '$email' && paplay /usr/share/sounds/freedesktop/stereo/message-new-instant.oga\"
@@ -628,15 +649,6 @@ EOF
       onDeletedMailPost: \"\"
 "
 else
-    cat >> "$config_file" << 'EOF'
-# Mailboxes for sidebar
-unmailboxes *
-named-mailboxes "INBOX" "=INBOX"
-named-mailboxes "Drafts" "=Drafts"
-named-mailboxes "Sent" "=Sent"
-named-mailboxes "Junk" "=Junk"
-named-mailboxes "Trash" "=Trash"
-EOF
     # Boxes for goimapnotify (standard) - list of maps with per-box handlers
     notify_boxes_yaml="    - mailbox: \"INBOX\"
       onNewMail: \"mbsync '$email' && notify-send -i mail-unread 'New Mail' '$email' && paplay /usr/share/sounds/freedesktop/stereo/message-new-instant.oga\"
@@ -678,7 +690,110 @@ fi
 
 echo "Created config file: $config_file"
 
+# ---------------------------------------------------------------------------
+# Build the named-mailboxes block for this account and insert into .muttrc
+# ---------------------------------------------------------------------------
+
+# Header label shown in sidebar (e.g. "F2 hyzen-disroot")
+sidebar_label="F${next_fkey} ${shortname}"
+
+if [ "$is_gmail" = true ]; then
+    sidebar_block="named-mailboxes \"${sidebar_label}\"      \"~/Maildir/${shortname}/INBOX/\"
+named-mailboxes \"  Drafts\"              \"~/Maildir/${shortname}/[Gmail]/Drafts/\"
+named-mailboxes \"  Sent\"                \"~/Maildir/${shortname}/[Gmail]/Sent Mail/\"
+named-mailboxes \"  Important\"           \"~/Maildir/${shortname}/[Gmail]/Important/\"
+named-mailboxes \"  Starred\"             \"~/Maildir/${shortname}/[Gmail]/Starred/\"
+named-mailboxes \"  Spam\"                \"~/Maildir/${shortname}/[Gmail]/Spam/\"
+named-mailboxes \"  Trash\"               \"~/Maildir/${shortname}/[Gmail]/Trash/\"
+named-mailboxes \"  All Mail\"            \"~/Maildir/${shortname}/[Gmail]/All Mail/\""
+else
+    sidebar_block="named-mailboxes \"${sidebar_label}\"      \"~/Maildir/${shortname}/INBOX/\"
+named-mailboxes \"  Drafts\"              \"~/Maildir/${shortname}/Drafts/\"
+named-mailboxes \"  Sent\"                \"~/Maildir/${shortname}/Sent/\"
+named-mailboxes \"  Junk\"                \"~/Maildir/${shortname}/Junk/\"
+named-mailboxes \"  Trash\"               \"~/Maildir/${shortname}/Trash/\""
+fi
+
+# Insert the sidebar block just before the # END_SIDEBAR marker
+# We use a Python one-liner for reliable multi-line insertion
+python3 - "$mutt_config" "$sidebar_block" << 'PYEOF'
+import sys
+
+config_path = sys.argv[1]
+new_block   = sys.argv[2]
+
+with open(config_path, 'r') as f:
+    lines = f.readlines()
+
+marker = '# END_SIDEBAR\n'
+insert_at = None
+for i, line in enumerate(lines):
+    if line.strip() == '# END_SIDEBAR':
+        insert_at = i
+        break
+
+if insert_at is None:
+    # Marker missing — just append
+    lines.append('\n' + new_block + '\n')
+else:
+    lines.insert(insert_at, new_block + '\n\n')
+
+with open(config_path, 'w') as f:
+    f.writelines(lines)
+PYEOF
+
+echo "Added sidebar entries for ${shortname} to $mutt_config"
+
+# -------------------------------------------------------
+# Backup .muttrc
+# -------------------------------------------------------
+cp "$mutt_config" "${mutt_config}.backup.$(date +%Y%m%d_%H%M%S)"
+echo "Backed up .muttrc"
+
+# Find insertion point
+if grep -q "^## ACCOUNT" "$mutt_config"; then
+    line_num=$(grep -n "^## ACCOUNT" "$mutt_config" | head -1 | cut -d: -f1)
+    ((line_num--))
+else
+    line_num=$(wc -l < "$mutt_config")
+fi
+
+# Add account to .muttrc
+{
+    head -n "$line_num" "$mutt_config"
+    echo "# Switch to account ${account_num} (${shortname})"
+    echo "macro index,pager <f$next_fkey> '<sync-mailbox><enter-command>source $config_file<enter><change-folder>~/Maildir/${shortname}/INBOX/<enter>'"
+    echo ""
+    echo "## ACCOUNT${account_num}"
+    echo "source \"$config_file\""
+    echo "folder-hook \"~/Maildir/${shortname}/\" 'source $config_file;'"
+    echo
+    tail -n +$((line_num + 1)) "$mutt_config"
+} > "${mutt_config}.tmp"
+
+mv "${mutt_config}.tmp" "$mutt_config"
+
+# -------------------------------------------------------
+# Create/update neomutt wrapper script
+# -------------------------------------------------------
+wrapper_script="$HOME/.local/bin/neomutt"
+mkdir -p "$HOME/.local/bin"
+
+# Collect all configured email addresses from mbsyncrc channels
+# Each "Channel <email>" line in .mbsyncrc is one account to sync
+cat > "$wrapper_script" << 'WRAPPER_EOF'
+#!/bin/bash
+mbsync -q -a & 
+exec /usr/bin/neomutt
+WRAPPER_EOF
+
+chmod +x "$wrapper_script"
+echo "Created wrapper script: $wrapper_script"
+echo "(make sure ~/.local/bin is in your PATH)"
+
+# -------------------------------------------------------
 # Create/append to .mbsyncrc
+# -------------------------------------------------------
 mbsync_config="$HOME/.mbsyncrc"
 echo "Adding mbsync configuration..."
 
@@ -789,53 +904,6 @@ systemctl --user start goimapnotify.service
 
 echo "goimapnotify service status:"
 systemctl --user status goimapnotify.service --no-pager || true
-
-# -------------------------------------------------------
-# Backup .muttrc
-# -------------------------------------------------------
-cp "$mutt_config" "${mutt_config}.backup.$(date +%Y%m%d_%H%M%S)"
-echo "Backed up .muttrc"
-
-# Find insertion point
-if grep -q "^## ACCOUNT" "$mutt_config"; then
-    line_num=$(grep -n "^## ACCOUNT" "$mutt_config" | head -1 | cut -d: -f1)
-    ((line_num--))
-else
-    line_num=$(wc -l < "$mutt_config")
-fi
-
-# Add account to .muttrc
-{
-    head -n "$line_num" "$mutt_config"
-    echo "# Switch to account ${account_num} (${shortname})"
-    echo "macro index,pager <f$next_fkey> '<sync-mailbox><enter-command>source $config_file<enter><change-folder>~/Maildir/${shortname}/INBOX/<enter>'"
-    echo ""
-    echo "## ACCOUNT${account_num}"
-    echo "source \"$config_file\""
-    echo "folder-hook \"~/Maildir/${shortname}/\" 'source $config_file;'"
-    echo
-    tail -n +$((line_num + 1)) "$mutt_config"
-} > "${mutt_config}.tmp"
-
-mv "${mutt_config}.tmp" "$mutt_config"
-
-# -------------------------------------------------------
-# Create/update neomutt wrapper script
-# -------------------------------------------------------
-wrapper_script="$HOME/.local/bin/neomutt"
-mkdir -p "$HOME/.local/bin"
-
-# Collect all configured email addresses from mbsyncrc channels
-# Each "Channel <email>" line in .mbsyncrc is one account to sync
-cat > "$wrapper_script" << 'WRAPPER_EOF'
-#!/bin/bash
-mbsync -q -a & 
-exec /usr/bin/neomutt
-WRAPPER_EOF
-
-chmod +x "$wrapper_script"
-echo "Created wrapper script: $wrapper_script"
-echo "(make sure ~/.local/bin is in your PATH)"
 
 echo
 echo "=== Setup Complete ==="
