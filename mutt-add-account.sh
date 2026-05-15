@@ -632,7 +632,7 @@ EOF
 if [ "$is_gmail" = true ]; then
     # Boxes for goimapnotify (Gmail) - list of maps with per-box handlers
     notify_boxes_yaml="    - mailbox: \"INBOX\"
-      onNewMail: \"mbsync '$email' && MAIL=\$(ls ~/Maildir/${shortname}/INBOX/new/ | sort -t= -k2 -n | tail -1) && FROM=\$(grep -m1 '^From:' ~/Maildir/${shortname}/INBOX/new/\$MAIL | cut -c6-50) && SUBJ=\$(grep -m1 '^Subject:' ~/Maildir/${shortname}/INBOX/new/\$MAIL | cut -c9-60) && notify-send -i mail-unread 'New Mail - $email' \"\$FROM\n\$SUBJ\" && paplay /usr/share/sounds/freedesktop/stereo/message-new-instant.oga\"
+      onNewMail: \"mbsync '$email' && MAIL=\$(ls ~/Maildir/${shortname}/INBOX/new/ | sort -t= -k2 -n | tail -1) && [ -n \"\$MAIL\" ] && FROM=\$(grep -m1 '^From:' ~/Maildir/${shortname}/INBOX/new/\$MAIL | cut -c6-50) && SUBJ=\$(grep -m1 '^Subject:' ~/Maildir/${shortname}/INBOX/new/\$MAIL | cut -c9-60) && notify-send -i mail-unread 'New Mail - $email' \"\$FROM\n\$SUBJ\" && paplay /usr/share/sounds/freedesktop/stereo/message-new-instant.oga\"
       onNewMailPost: \"\"
       onChangedMail: \"mbsync $email\"
       onChangedMailPost: \"\"
@@ -670,7 +670,7 @@ if [ "$is_gmail" = true ]; then
 else
     # Boxes for goimapnotify (standard) - list of maps with per-box handlers
     notify_boxes_yaml="    - mailbox: \"INBOX\"
-      onNewMail: \"mbsync '$email' && MAIL=\$(ls ~/Maildir/${shortname}/INBOX/new/ | sort -t= -k2 -n | tail -1) && FROM=\$(grep -m1 '^From:' ~/Maildir/${shortname}/INBOX/new/\$MAIL | cut -c6-50) && SUBJ=\$(grep -m1 '^Subject:' ~/Maildir/${shortname}/INBOX/new/\$MAIL | cut -c9-60) && notify-send -i mail-unread 'New Mail - $email' \"\$FROM\n\$SUBJ\" && paplay /usr/share/sounds/freedesktop/stereo/message-new-instant.oga\"
+      onNewMail: \"mbsync '$email' && MAIL=\$(ls ~/Maildir/${shortname}/INBOX/new/ | sort -t= -k2 -n | tail -1) && [ -n \"\$MAIL\" ] && FROM=\$(grep -m1 '^From:' ~/Maildir/${shortname}/INBOX/new/\$MAIL | cut -c6-50) && SUBJ=\$(grep -m1 '^Subject:' ~/Maildir/${shortname}/INBOX/new/\$MAIL | cut -c9-60) && notify-send -i mail-unread 'New Mail - $email' \"\$FROM\n\$SUBJ\" && paplay /usr/share/sounds/freedesktop/stereo/message-new-instant.oga\"
       onNewMailPost: \"\"
       onChangedMail: \"mbsync $email\"
       onChangedMailPost: \"\"
