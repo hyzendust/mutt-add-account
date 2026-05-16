@@ -2,7 +2,8 @@
 
 set -e
 
-echo "=== Mutt Account Setup Script ==="
+echo
+echo "=== Mutt Account Setup ==="
 echo
 
 # Check if .muttrc exists, if not create it with default settings
@@ -31,6 +32,7 @@ source ~/.mutt/unbinds.rc
 source ~/.mutt/sidebar.muttrc
 source ~/.mutt/vim-keys.rc
 source ~/.mutt/vombatidae.neomuttrc
+source ~/.mutt/mbsync-trigger.muttrc
 
 # Clear any default mailboxes before loading account configs
 unmailboxes *
@@ -95,6 +97,7 @@ SIDEBAR_BLOCK_EOF
         "source ~/.mutt/sidebar.muttrc"
         "source ~/.mutt/vim-keys.rc"
         "source ~/.mutt/vombatidae.neomuttrc"
+        "source ~/.mutt/mbsync-trigger.muttrc"
         ""
         "# Clear any default mailboxes before loading account configs"
         "unmailboxes *"
@@ -103,13 +106,20 @@ SIDEBAR_BLOCK_EOF
         "macro index,pager \cb \"<pipe-message> urlscan<enter>\" \"scan for URLs\""
         ""
     )
-    
+
     for option in "${required_options[@]}"; do
         # Skip empty lines
         if [ -z "$option" ]; then
             continue
         fi
         option_name=$(echo "$option" | awk '{print $1, $2}')
+        # Skip macro lines — matching on first two words would clobber F-key switch macros
+        if [[ "$option_name" == "macro index,pager" ]]; then
+            if ! grep -qF "$option" "$mutt_config"; then
+                sed -i "1i${option}" "$mutt_config"
+            fi
+            continue
+        fi
         if grep -q "^${option_name}" "$mutt_config"; then
             # Option exists, update it
             sed -i "s|^${option_name}.*|${option}|" "$mutt_config"
@@ -314,6 +324,19 @@ VOMBAT_EOF
     echo "Created ~/.mutt/vombatidae.neomuttrc"
 fi
 
+# Create/override mbsync-trigger.muttrc
+mbsync_trigger_file="$HOME/.mutt/mbsync-trigger.muttrc"
+cat > "$mbsync_trigger_file" << 'MBSYNC_TRIGGER_EOF'
+# manual sync - Ctrl+y
+macro index,pager \cy "<enter-command>unset wait_key<enter><shell-escape>flock -w 30 /tmp/mbsync.lock mbsync -a -q &<enter><enter-command>set wait_key<enter>" "sync all mailboxes with mbsync"
+# unread mail becomes read mail after opening
+bind index o display-message
+bind index <return> display-message
+macro pager o "<exit><sync-mailbox><enter-command>unset wait_key<enter><shell-escape>sleep 1 && flock -w 30 /tmp/mbsync.lock mbsync -a -q &<enter><enter-command>set wait_key<enter>" "exit and sync"
+macro pager q "<exit><sync-mailbox><enter-command>unset wait_key<enter><shell-escape>sleep 1 && flock -w 30 /tmp/mbsync.lock mbsync -a -q &<enter><enter-command>set wait_key<enter>" "exit and sync"
+MBSYNC_TRIGGER_EOF
+echo "Created ~/.mutt/mbsync-trigger.muttrc"
+
 # Create/update mbsync apparmor profile
 apparmor_file="/etc/apparmor.d/mbsync"
 if [ ! -f "$apparmor_file" ] && [ -d "/etc/apparmor.d" ]; then
@@ -391,23 +414,23 @@ curl -fsSL "https://raw.githubusercontent.com/LukeSmithxyz/mutt-wizard/refs/head
 if [ -f "$domains_csv" ]; then
     # Look for the domain in the CSV (case-insensitive)
     csv_match=$(grep -i "^${email_domain}," "$domains_csv" | head -1)
-    
+
     if [ -n "$csv_match" ]; then
         # Parse CSV: ADDRESS,IMAP,imap port,SMTP,smtp port
         detected_imap=$(echo "$csv_match" | cut -d',' -f2)
         imap_port=$(echo "$csv_match" | cut -d',' -f3)
         detected_smtp=$(echo "$csv_match" | cut -d',' -f4)
         detected_port=$(echo "$csv_match" | cut -d',' -f5)
-        
+
         echo ""
         echo "Found configuration for $email_domain:"
         echo "  IMAP server: $detected_imap"
         echo "  SMTP server: $detected_smtp"
         echo "  SMTP port:   $detected_port"
         echo ""
-        
+
         read -p "Use these settings? (y/n): " confirm
-        
+
         if [[ "$confirm" =~ ^[Yy]$ ]]; then
             imap_server="$detected_imap"
             smtp_server="$detected_smtp"
@@ -423,7 +446,7 @@ if [ -f "$domains_csv" ]; then
     else
         # Domain not in CSV, fall back to auto-detection
         echo "Domain not found in known configurations, attempting auto-detection..."
-        
+
         # Try to get MX record and extract mail server
         mx_record=$(dig +short MX "$email_domain" 2>/dev/null | sort -n | head -1 | awk '{print $2}' | sed 's/\.$//')
 
@@ -432,7 +455,7 @@ if [ -f "$domains_csv" ]; then
         if [ -n "$mx_record" ]; then
             # Got MX record, try common IMAP server patterns
             base_domain=$(echo "$mx_record" | sed 's/^smtp\.//' | sed 's/^mx[0-9]*\.//' | sed 's/^mail\.//')
-            
+
             # Try common IMAP server patterns
             if host "imap.$base_domain" &>/dev/null; then
                 detected_imap="imap.$base_domain"
@@ -443,7 +466,7 @@ if [ -f "$domains_csv" ]; then
             else
                 detected_imap="mail.${email_domain}"
             fi
-            
+
             # Try to detect SMTP server
             if host "smtp.$base_domain" &>/dev/null; then
                 detected_smtp="smtp.$base_domain"
@@ -523,9 +546,9 @@ else
     use_starttls=false
 fi
 
-# Find next available F-key
+# Find next available F-key (checks both macro lines and sidebar labels)
 next_fkey=2
-while grep -q "<f$next_fkey>" "$mutt_config"; do
+while grep -q "<f$next_fkey>\|\"F${next_fkey} " "$mutt_config"; do
     ((next_fkey++))
 done
 
@@ -562,7 +585,7 @@ encoded_pass=""
 for ((i=0; i<${#password}; i++)); do
     c="${password:$i:1}"
     case "$c" in
-        [a-zA-Z0-9.~_-]) 
+        [a-zA-Z0-9.~_-])
             encoded_pass+="$c"
             ;;
         *)
@@ -632,7 +655,7 @@ EOF
 if [ "$is_gmail" = true ]; then
     # Boxes for goimapnotify (Gmail) - list of maps with per-box handlers
     notify_boxes_yaml="    - mailbox: \"INBOX\"
-      onNewMail: \"mbsync '$email' && MAIL=\$(ls ~/Maildir/${shortname}/INBOX/new/ | sort -t= -k2 -n | tail -1) && [ -n \"\$MAIL\" ] && FROM=\$(grep -m1 '^From:' ~/Maildir/${shortname}/INBOX/new/\$MAIL | cut -c6-50) && SUBJ=\$(grep -m1 '^Subject:' ~/Maildir/${shortname}/INBOX/new/\$MAIL | cut -c9-60) && notify-send -i mail-unread 'New Mail - $email' \"\$FROM\n\$SUBJ\" && paplay /usr/share/sounds/freedesktop/stereo/message-new-instant.oga\"
+      onNewMail: \"mbsync '$email' && MAIL=\$(ls ~/Maildir/${shortname}/INBOX/new/ | sort -t= -k2 -n | tail -1) && [ -n \\\"\$MAIL\\\" ] && FROM=\$(grep -m1 '^From:' ~/Maildir/${shortname}/INBOX/new/\$MAIL | cut -c6-50) && SUBJ=\$(grep -m1 '^Subject:' ~/Maildir/${shortname}/INBOX/new/\$MAIL | cut -c9-60) && notify-send -i mail-unread 'New Mail - $email' \\\"\$FROM\\n\$SUBJ\\\" && paplay /usr/share/sounds/freedesktop/stereo/message-new-instant.oga\"
       onNewMailPost: \"\"
       onChangedMail: \"mbsync $email\"
       onChangedMailPost: \"\"
@@ -670,7 +693,7 @@ if [ "$is_gmail" = true ]; then
 else
     # Boxes for goimapnotify (standard) - list of maps with per-box handlers
     notify_boxes_yaml="    - mailbox: \"INBOX\"
-      onNewMail: \"mbsync '$email' && MAIL=\$(ls ~/Maildir/${shortname}/INBOX/new/ | sort -t= -k2 -n | tail -1) && [ -n \"\$MAIL\" ] && FROM=\$(grep -m1 '^From:' ~/Maildir/${shortname}/INBOX/new/\$MAIL | cut -c6-50) && SUBJ=\$(grep -m1 '^Subject:' ~/Maildir/${shortname}/INBOX/new/\$MAIL | cut -c9-60) && notify-send -i mail-unread 'New Mail - $email' \"\$FROM\n\$SUBJ\" && paplay /usr/share/sounds/freedesktop/stereo/message-new-instant.oga\"
+      onNewMail: \"mbsync '$email' && MAIL=\$(ls ~/Maildir/${shortname}/INBOX/new/ | sort -t= -k2 -n | tail -1) && [ -n \\\"\$MAIL\\\" ] && FROM=\$(grep -m1 '^From:' ~/Maildir/${shortname}/INBOX/new/\$MAIL | cut -c6-50) && SUBJ=\$(grep -m1 '^Subject:' ~/Maildir/${shortname}/INBOX/new/\$MAIL | cut -c9-60) && notify-send -i mail-unread 'New Mail - $email' \\\"\$FROM\\n\$SUBJ\\\" && paplay /usr/share/sounds/freedesktop/stereo/message-new-instant.oga\"
       onNewMailPost: \"\"
       onChangedMail: \"mbsync $email\"
       onChangedMailPost: \"\"
@@ -717,7 +740,7 @@ echo "Created config file: $config_file"
 sidebar_label="F${next_fkey} ${shortname}"
 
 if [ "$is_gmail" = true ]; then
-    sidebar_block="named-mailboxes \"${sidebar_label}\"      \"~/Maildir/${shortname}/INBOX/\"
+    sidebar_block="named-mailboxes \"${sidebar_label}\" \"~/Maildir/${shortname}/INBOX/\"
 named-mailboxes \"  Drafts\"              \"~/Maildir/${shortname}/[Gmail]/Drafts/\"
 named-mailboxes \"  Sent\"                \"~/Maildir/${shortname}/[Gmail]/Sent Mail/\"
 named-mailboxes \"  Important\"           \"~/Maildir/${shortname}/[Gmail]/Important/\"
@@ -726,7 +749,7 @@ named-mailboxes \"  Spam\"                \"~/Maildir/${shortname}/[Gmail]/Spam/
 named-mailboxes \"  Trash\"               \"~/Maildir/${shortname}/[Gmail]/Trash/\"
 named-mailboxes \"  All Mail\"            \"~/Maildir/${shortname}/[Gmail]/All Mail/\""
 else
-    sidebar_block="named-mailboxes \"${sidebar_label}\"      \"~/Maildir/${shortname}/INBOX/\"
+    sidebar_block="named-mailboxes \"${sidebar_label}\" \"~/Maildir/${shortname}/INBOX/\"
 named-mailboxes \"  Drafts\"              \"~/Maildir/${shortname}/Drafts/\"
 named-mailboxes \"  Sent\"                \"~/Maildir/${shortname}/Sent/\"
 named-mailboxes \"  Junk\"                \"~/Maildir/${shortname}/Junk/\"
@@ -744,7 +767,6 @@ new_block   = sys.argv[2]
 with open(config_path, 'r') as f:
     lines = f.readlines()
 
-marker = '# END_SIDEBAR\n'
 insert_at = None
 for i, line in enumerate(lines):
     if line.strip() == '# END_SIDEBAR':
@@ -755,7 +777,7 @@ if insert_at is None:
     # Marker missing — just append
     lines.append('\n' + new_block + '\n')
 else:
-    lines.insert(insert_at, new_block + '\n\n')
+    lines.insert(insert_at, '\n' + new_block + '\n\n')
 
 with open(config_path, 'w') as f:
     f.writelines(lines)
@@ -769,27 +791,48 @@ echo "Added sidebar entries for ${shortname} to $mutt_config"
 cp "$mutt_config" "${mutt_config}.backup.$(date +%Y%m%d_%H%M%S)"
 echo "Backed up .muttrc"
 
-# Find insertion point
+# -------------------------------------------------------
+# Insert the macro line after the last existing <fN> switch macro
+# so all switch macros stay grouped together at the top
+# -------------------------------------------------------
+if grep -q "^macro index,pager <f" "$mutt_config"; then
+    macro_line=$(grep -n "^macro index,pager <f" "$mutt_config" | tail -1 | cut -d: -f1)
+else
+    macro_line=$(grep -n "^# URLScan" "$mutt_config" | head -1 | cut -d: -f1)
+    ((macro_line++))
+fi
+
+{
+    head -n "$macro_line" "$mutt_config"
+    echo "# Switch to account ${account_num} (${shortname})"
+    echo "macro index,pager <f$next_fkey> '<sync-mailbox><enter-command>source $config_file<enter><change-folder>~/Maildir/${shortname}/INBOX/<enter>'"
+    tail -n +$((macro_line + 1)) "$mutt_config"
+} > "${mutt_config}.tmp"
+mv "${mutt_config}.tmp" "$mutt_config"
+
+# -------------------------------------------------------
+# Insert the source/folder-hook block before the first existing
+# ## ACCOUNT block so new accounts stack above older ones,
+# falling back to before the sidebar separator if no accounts yet
+# -------------------------------------------------------
 if grep -q "^## ACCOUNT" "$mutt_config"; then
     line_num=$(grep -n "^## ACCOUNT" "$mutt_config" | head -1 | cut -d: -f1)
+    ((line_num--))
+elif grep -q "^# ---------" "$mutt_config"; then
+    line_num=$(grep -n "^# ---------" "$mutt_config" | head -1 | cut -d: -f1)
     ((line_num--))
 else
     line_num=$(wc -l < "$mutt_config")
 fi
 
-# Add account to .muttrc
 {
     head -n "$line_num" "$mutt_config"
-    echo "# Switch to account ${account_num} (${shortname})"
-    echo "macro index,pager <f$next_fkey> '<sync-mailbox><enter-command>source $config_file<enter><change-folder>~/Maildir/${shortname}/INBOX/<enter>'"
-    echo ""
     echo "## ACCOUNT${account_num}"
     echo "source \"$config_file\""
     echo "folder-hook \"~/Maildir/${shortname}/\" 'source $config_file;'"
     echo
     tail -n +$((line_num + 1)) "$mutt_config"
 } > "${mutt_config}.tmp"
-
 mv "${mutt_config}.tmp" "$mutt_config"
 
 # -------------------------------------------------------
@@ -802,7 +845,7 @@ mkdir -p "$HOME/.local/bin"
 # Each "Channel <email>" line in .mbsyncrc is one account to sync
 cat > "$wrapper_script" << 'WRAPPER_EOF'
 #!/bin/bash
-mbsync -q -a & 
+flock -w 30 /tmp/mbsync.lock mbsync -q -a &
 exec /usr/bin/neomutt
 WRAPPER_EOF
 
